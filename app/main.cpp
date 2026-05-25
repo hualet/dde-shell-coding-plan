@@ -10,9 +10,12 @@
 #include <QWebEngineSettings>
 #include <QWebEngineView>
 #include <QWebChannel>
+#include <QUrl>
 #include <QShortcut>
 #include <QKeySequence>
 #include <QDebug>
+#include <QFile>
+#include <QStringList>
 
 DWIDGET_USE_NAMESPACE
 
@@ -44,25 +47,37 @@ public:
             m_webView->reload();
         });
 
+        connect(m_webView, &QWebEngineView::loadFinished, this, &MainWindow::onPageLoadFinished);
         connect(m_bridge, &WebBridge::loginPageRequested, this, &MainWindow::onLoginPageRequested);
         connect(m_bridge, &WebBridge::loginFinished, this, &MainWindow::onLoginFinished);
     }
 
     void loadFrontend()
     {
-        QString frontendPath = qApp->applicationDirPath() + QStringLiteral("/web/index.html");
-        if (QFile::exists(frontendPath)) {
-            m_webView->setUrl(QUrl::fromLocalFile(frontendPath));
-        } else {
-            m_webView->setUrl(QUrl(QStringLiteral("qrc:/web/index.html")));
+        const QStringList frontendPaths {
+            qApp->applicationDirPath() + QStringLiteral("/web/index.html"),
+            QStringLiteral(CODING_PLAN_WEB_DIR "/index.html"),
+            QStringLiteral("/usr/share/dde-coding-plan/web/index.html"),
+            QStringLiteral("/usr/local/share/dde-coding-plan/web/index.html")
+        };
+
+        for (const QString &frontendPath : frontendPaths) {
+            if (QFile::exists(frontendPath)) {
+                m_webView->setUrl(QUrl::fromLocalFile(frontendPath));
+                m_reactUrl = m_webView->url().toString();
+                return;
+            }
         }
-        m_reactUrl = m_webView->url().toString();
+
+        qWarning() << "Could not find React frontend in" << frontendPaths;
+        m_webView->setHtml(tr("Coding Plan frontend is not installed."));
     }
 
 private slots:
     void onLoginPageRequested(const QString &providerId, const QString &loginUrl)
     {
         m_loginProviderId = providerId;
+        m_loginProviderConfig = m_bridge->getProviderConfig(providerId);
         m_webView->setUrl(QUrl(loginUrl));
     }
 
@@ -74,12 +89,54 @@ private slots:
         }
     }
 
+    void onPageLoadFinished(bool ok)
+    {
+        if (!ok || m_loginProviderId.isEmpty()) {
+            return;
+        }
+
+        if (!isAllowedOrigin(m_webView->url())) {
+            return;
+        }
+
+        const QString extractorScript = m_loginProviderConfig.value(QStringLiteral("extractorScript")).toString();
+        if (extractorScript.trimmed().isEmpty()) {
+            return;
+        }
+
+        m_webView->page()->runJavaScript(extractorScript, [this](const QVariant &result) {
+            const QVariantMap data = result.toMap();
+            if (data.value(QStringLiteral("status")).toString() != QStringLiteral("ok")) {
+                return;
+            }
+
+            const double remainingRatio = data.value(QStringLiteral("remainingRatio"), -1.0).toDouble();
+            if (remainingRatio < 0) {
+                return;
+            }
+
+            const QString providerId = m_loginProviderId;
+            m_bridge->setManualRatio(providerId, remainingRatio);
+            m_loginProviderId.clear();
+            m_loginProviderConfig.clear();
+            onLoginFinished(providerId);
+        });
+    }
+
 private:
+    bool isAllowedOrigin(const QUrl &url) const
+    {
+        const QString pageOrigin = url.scheme() + QStringLiteral("://") + url.host();
+        const QStringList allowedOrigins = m_loginProviderConfig.value(QStringLiteral("allowedOrigins")).toStringList();
+        return allowedOrigins.contains(pageOrigin);
+    }
+
     QWebEngineView *m_webView = nullptr;
     QWebChannel *m_channel = nullptr;
     WebBridge *m_bridge = nullptr;
     QString m_reactUrl;
     QString m_loginProviderId;
+    QVariantMap m_loginProviderConfig;
 };
 
 int main(int argc, char *argv[])
@@ -90,7 +147,6 @@ int main(int argc, char *argv[])
     a.setApplicationVersion(QStringLiteral("0.2.0"));
     a.setProductName(QObject::tr("Coding Plan"));
     a.setProductIcon(QIcon::fromTheme(QStringLiteral("preferences-system")));
-    a.loadTranslator();
 
     MainWindow w;
     w.show();
