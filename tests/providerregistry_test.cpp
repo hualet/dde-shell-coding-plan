@@ -20,6 +20,7 @@ private slots:
   void reactFrontendEntryExists ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
   void kimiCodeExtractorTargetsConsoleSelectors ();
+  void kimiCodeDualQuotaSnapshotContract ();
 };
 
 void
@@ -220,7 +221,42 @@ ProviderRegistryTest::kimiCodeExtractorTargetsConsoleSelectors ()
   QVERIFY (script.contains (QStringLiteral ("querySelector")));
   QVERIFY (script.contains (QStringLiteral ("kimi-code")));
   QVERIFY (script.contains (QStringLiteral ("fiveHourBalanceText")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
   QVERIFY (script.contains (QStringLiteral ("parse_error")));
+}
+
+void
+ProviderRegistryTest::kimiCodeDualQuotaSnapshotContract ()
+{
+  QuotaSnapshot snapshot;
+  snapshot.providerId = QStringLiteral ("kimi-code");
+  snapshot.providerName = QStringLiteral ("Kimi Code");
+  snapshot.status = SnapshotStatus::Ok;
+  snapshot.remainingRatio = 0.75;
+  snapshot.balanceText = QStringLiteral ("75%");
+  snapshot.fiveHourRemainingRatio = 0.40;
+  snapshot.fiveHourBalanceText = QStringLiteral ("40%");
+
+  const QVariantMap map = snapshot.toVariantMap ();
+
+  QCOMPARE (map.value (QStringLiteral ("providerId")).toString (),
+            QStringLiteral ("kimi-code"));
+  QCOMPARE (map.value (QStringLiteral ("remainingRatio")).toDouble (), 0.75);
+  QCOMPARE (map.value (QStringLiteral ("balanceText")).toString (),
+            QStringLiteral ("75%"));
+  QCOMPARE (map.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), 0.40);
+  QCOMPARE (map.value (QStringLiteral ("fiveHourBalanceText")).toString (),
+            QStringLiteral ("40%"));
+
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("kimi-code"));
+  const QString script = provider.extractorScript;
+
+  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
+  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
+  QVERIFY (script.contains (QStringLiteral ("weekly")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHour")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

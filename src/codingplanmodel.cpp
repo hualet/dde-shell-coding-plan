@@ -195,6 +195,34 @@ CodingPlanModel::setManualRatio (const QString &providerId, double ratio)
 }
 
 void
+CodingPlanModel::setWebViewResult (const QString &providerId,
+                                   const QVariantMap &result)
+{
+  const int index = snapshotIndex (providerId);
+  if (index < 0)
+    {
+      return;
+    }
+
+  QuotaSnapshot snapshot = m_snapshots.at (index);
+
+  const double weeklyRatio = result.value (QStringLiteral ("remainingRatio")).toDouble ();
+  snapshot.remainingRatio = weeklyRatio >= 0 ? std::max (0.0, std::min (1.0, weeklyRatio)) : -1.0;
+  snapshot.balanceText = result.value (QStringLiteral ("balanceText")).toString ();
+
+  const double fiveHourRatio = result.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble ();
+  snapshot.fiveHourRemainingRatio = fiveHourRatio >= 0 ? std::max (0.0, std::min (1.0, fiveHourRatio)) : -1.0;
+  snapshot.fiveHourBalanceText = result.value (QStringLiteral ("fiveHourBalanceText")).toString ();
+
+  snapshot.status = SnapshotStatus::Ok;
+  snapshot.message = QStringLiteral ("WebView 读取");
+  snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
+  m_snapshots[index] = snapshot;
+  saveSnapshots ();
+  emit snapshotsChanged ();
+}
+
+void
 CodingPlanModel::setProviderError (const QString &providerId,
                                    const QString &message)
 {
@@ -252,6 +280,8 @@ CodingPlanModel::loadSnapshots ()
           snapshot.status = statusFromString (object.value (QStringLiteral ("status")).toString ());
           snapshot.remainingRatio = object.value (QStringLiteral ("remainingRatio")).toDouble (-1.0);
           snapshot.balanceText = object.value (QStringLiteral ("balanceText")).toString ();
+          snapshot.fiveHourRemainingRatio = object.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (-1.0);
+          snapshot.fiveHourBalanceText = object.value (QStringLiteral ("fiveHourBalanceText")).toString ();
           snapshot.message = object.value (QStringLiteral ("message")).toString ();
           snapshot.updatedAt = QDateTime::fromString (
               object.value (QStringLiteral ("updatedAt")).toString (), Qt::ISODate);
@@ -272,6 +302,8 @@ CodingPlanModel::saveSnapshots () const
       object.insert (QStringLiteral ("status"), snapshotStatusToString (snapshot.status));
       object.insert (QStringLiteral ("remainingRatio"), snapshot.remainingRatio);
       object.insert (QStringLiteral ("balanceText"), snapshot.balanceText);
+      object.insert (QStringLiteral ("fiveHourRemainingRatio"), snapshot.fiveHourRemainingRatio);
+      object.insert (QStringLiteral ("fiveHourBalanceText"), snapshot.fiveHourBalanceText);
       object.insert (QStringLiteral ("message"), snapshot.message);
       object.insert (QStringLiteral ("updatedAt"), snapshot.updatedAt.toString (Qt::ISODate));
       array.append (object);
