@@ -1,0 +1,12 @@
+{
+  "Plugin": {
+    "Version": "0.1.0",
+    "Id": "org.deepin.ds.coding-plan",
+    "Url": "main.qml",
+    "Parent": "org.deepin.ds.dock",
+    "Name": "Coding Plan",
+    "Name[zh_CN]": "Coding Plan 额度",
+    "Description": "Show remaining quota for Codex, Kimi Code and GLM Coding plans",
+    "Description[zh_CN]": "显示 Codex、Kimi Code 和 GLM Coding 订阅额度"
+  }
+}
