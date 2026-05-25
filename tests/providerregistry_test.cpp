@@ -3,6 +3,7 @@
 
 #include "providerregistry.h"
 
+#include <QFile>
 #include <QTest>
 
 class ProviderRegistryTest : public QObject
@@ -12,6 +13,7 @@ class ProviderRegistryTest : public QObject
 private slots:
   void builtInWebViewProvidersCoverMvpPlatforms ();
   void snapshotStatusMapsToPanelSeverity ();
+  void panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ();
 };
 
 void
@@ -53,6 +55,21 @@ ProviderRegistryTest::snapshotStatusMapsToPanelSeverity ()
   snapshot.status = SnapshotStatus::ParseError;
   snapshot.remainingRatio = 0.9;
   QCOMPARE (snapshot.severity (), PanelSeverity::Error);
+}
+
+void
+ProviderRegistryTest::panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (qml.contains (
+      QStringLiteral ("useClassicTaskbarLayout: Panel.itemAlignment === Dock.LeftAlignment")));
+  QVERIFY (qml.contains (
+      QStringLiteral ("dockOrder: useClassicTaskbarLayout ? 21 : 10")));
+  QVERIFY (qml.contains (QStringLiteral ("function openLoginCenter")));
+  QVERIFY (qml.contains (QStringLiteral ("onClicked: root.openLoginCenter()")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

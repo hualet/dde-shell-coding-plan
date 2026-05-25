@@ -77,6 +77,9 @@ if(BUILD_TESTING)
         coding-plan-core
         Qt6::Test
     )
+    target_compile_definitions(providerregistry_tests PRIVATE
+        SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
 
     add_test(NAME providerregistry_tests COMMAND providerregistry_tests)
 endif()

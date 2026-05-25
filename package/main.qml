@@ -13,11 +13,12 @@ AppletItem {
     objectName: "coding plan applet"
 
     readonly property bool useColumnLayout: Panel.position % 2
+    readonly property bool useClassicTaskbarLayout: Panel.itemAlignment === Dock.LeftAlignment
     readonly property int dockSize: Panel.rootObject.dockSize || 48
     readonly property var quotaSnapshots: Applet.quota ? Applet.quota.snapshots : []
     readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
     property var selectedProvider: ({})
-    property int dockOrder: 12
+    property int dockOrder: useClassicTaskbarLayout ? 21 : 10
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * 24 + 16)
     implicitHeight: dockSize
@@ -47,6 +48,31 @@ AppletItem {
         return {}
     }
 
+    function openLoginCenter(provider) {
+        if (provider && provider.providerId) {
+            root.selectedProvider = provider
+        } else if (!root.selectedProvider.providerId && root.quotaSnapshots.length > 0) {
+            root.selectedProvider = root.quotaSnapshots[0]
+        }
+
+        popup.popupVisible = false
+        webPopup.popupVisible = true
+        root.configureWebView()
+    }
+
+    function configureWebView() {
+        if (!webLoader.item || !root.selectedProvider.providerId)
+            return
+
+        const provider = root.providerConfig(root.selectedProvider.providerId)
+        webLoader.item.providerId = root.selectedProvider.providerId
+        webLoader.item.providerName = root.selectedProvider.providerName
+        webLoader.item.loginUrl = provider.loginUrl || ""
+        webLoader.item.quotaUrl = provider.quotaUrl || ""
+        webLoader.item.allowedOrigins = provider.allowedOrigins || []
+        webLoader.item.extractorScript = provider.extractorScript || ""
+    }
+
     PanelToolTip {
         id: toolTip
         text: Applet.quota ? Applet.quota.tooltipText : ""
@@ -68,7 +94,7 @@ AppletItem {
 
     MouseArea {
         anchors.fill: parent
-        onClicked: popup.popupVisible = !popup.popupVisible
+        onClicked: root.openLoginCenter()
     }
 
     Row {
@@ -157,6 +183,11 @@ AppletItem {
                         text: qsTr("Refresh")
                         onClicked: Applet.quota.refreshAll()
                     }
+
+                    Button {
+                        text: qsTr("Login Center")
+                        onClicked: root.openLoginCenter()
+                    }
                 }
 
                 Repeater {
@@ -213,10 +244,7 @@ AppletItem {
 
                                 Button {
                                     text: qsTr("Login")
-                                    onClicked: {
-                                        root.selectedProvider = modelData
-                                        webPopup.popupVisible = true
-                                    }
+                                    onClicked: root.openLoginCenter(modelData)
                                 }
 
                                 Button {
@@ -248,29 +276,117 @@ AppletItem {
         popupX: DockPanelPositioner.x
         popupY: DockPanelPositioner.y
 
-        Loader {
+        Control {
             anchors.fill: parent
-            active: webPopup.popupVisible
-            source: "ProviderWebView.qml"
+            padding: 12
 
-            onLoaded: {
-                const provider = root.providerConfig(root.selectedProvider.providerId || "")
-                item.providerId = root.selectedProvider.providerId || ""
-                item.providerName = root.selectedProvider.providerName || ""
-                item.loginUrl = provider.loginUrl || ""
-                item.quotaUrl = provider.quotaUrl || ""
-                item.allowedOrigins = provider.allowedOrigins || []
-                item.extractorScript = provider.extractorScript || ""
-                item.closeRequested.connect(function() {
-                    webPopup.popupVisible = false
-                })
-                item.extracted.connect(function(remainingRatio) {
-                    Applet.quota.setManualRatio(root.selectedProvider.providerId, remainingRatio)
-                    webPopup.popupVisible = false
-                })
-                item.extractionFailed.connect(function(message) {
-                    Applet.quota.setProviderError(root.selectedProvider.providerId, message)
-                })
+            contentItem: RowLayout {
+                spacing: 12
+
+                ColumnLayout {
+                    Layout.preferredWidth: 250
+                    Layout.fillHeight: true
+                    spacing: 10
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Label {
+                            text: qsTr("Coding Plan")
+                            font.pixelSize: 17
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            text: qsTr("Close")
+                            onClicked: webPopup.popupVisible = false
+                        }
+                    }
+
+                    Repeater {
+                        model: root.quotaSnapshots
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            radius: 8
+                            color: modelData.providerId === root.selectedProvider.providerId
+                                   ? Qt.rgba(0.2, 0.45, 0.9, 0.16)
+                                   : "transparent"
+                            border.width: 1
+                            border.color: Qt.rgba(0.5, 0.5, 0.5, 0.22)
+                            implicitHeight: providerCard.implicitHeight + 18
+
+                            ColumnLayout {
+                                id: providerCard
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 6
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+
+                                    Label {
+                                        text: modelData.providerName
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Label {
+                                        text: modelData.status === "ok" ? qsTr("Signed in") : qsTr("Login needed")
+                                        color: root.severityColor(modelData.severity)
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.remainingRatio >= 0
+                                          ? qsTr("%1 remaining").arg(Math.round(modelData.remainingRatio * 100) + "%")
+                                          : modelData.message
+                                    wrapMode: Text.WordWrap
+                                    opacity: 0.8
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.selectedProvider = modelData
+                                    root.configureWebView()
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: qsTr("Refresh All")
+                        onClicked: Applet.quota.refreshAll()
+                    }
+                }
+
+                Loader {
+                    id: webLoader
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    active: webPopup.popupVisible
+                    source: "ProviderWebView.qml"
+
+                    onLoaded: {
+                        root.configureWebView()
+                        item.closeRequested.connect(function() {
+                            webPopup.popupVisible = false
+                        })
+                        item.extracted.connect(function(remainingRatio) {
+                            Applet.quota.setManualRatio(root.selectedProvider.providerId, remainingRatio)
+                            webPopup.popupVisible = false
+                        })
+                        item.extractionFailed.connect(function(message) {
+                            Applet.quota.setProviderError(root.selectedProvider.providerId, message)
+                        })
+                    }
+                }
             }
         }
     }
