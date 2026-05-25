@@ -17,7 +17,7 @@ Item {
     property string extractorScript
 
     signal closeRequested()
-    signal extracted(real remainingRatio)
+    signal extracted(var result)
     signal extractionFailed(string message)
 
     function isAllowedOrigin(pageUrl) {
@@ -71,7 +71,7 @@ Item {
 
                     webView.runJavaScript(root.extractorScript, function(result) {
                         if (result && result.status === "ok" && result.remainingRatio >= 0) {
-                            root.extracted(result.remainingRatio)
+                            root.extracted(result)
                         } else {
                             root.extractionFailed(result && result.message ? result.message : qsTr("Quota could not be read from this page."))
                         }

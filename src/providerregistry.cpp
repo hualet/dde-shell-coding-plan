@@ -101,6 +101,7 @@ kimiCodeExtractorScript ()
   }
   if (fiveHour) {
     result.fiveHourBalanceText = fiveHour.text;
+    result.fiveHourRemainingRatio = fiveHour.ratio !== null ? fiveHour.ratio : -1;
     if (weekly === null && fiveHour.ratio !== null) {
       result.remainingRatio = fiveHour.ratio;
       result.balanceText = fiveHour.text;
@@ -163,6 +164,8 @@ QuotaSnapshot::toVariantMap () const
   result.insert (QStringLiteral ("total"), total);
   result.insert (QStringLiteral ("unit"), unit);
   result.insert (QStringLiteral ("balanceText"), balanceText);
+  result.insert (QStringLiteral ("fiveHourRemainingRatio"), fiveHourRemainingRatio);
+  result.insert (QStringLiteral ("fiveHourBalanceText"), fiveHourBalanceText);
   result.insert (QStringLiteral ("resetAt"), resetAt.toString (Qt::ISODate));
   result.insert (QStringLiteral ("updatedAt"), updatedAt.toString (Qt::ISODate));
   result.insert (QStringLiteral ("consoleUrl"), consoleUrl);

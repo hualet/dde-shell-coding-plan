@@ -57,10 +57,12 @@ struct QuotaSnapshot
   SourceType source = SourceType::WebView;
   SnapshotStatus status = SnapshotStatus::Unsupported;
   double remainingRatio = -1.0;
+  double fiveHourRemainingRatio = -1.0;
   double used = -1.0;
   double total = -1.0;
   QString unit;
   QString balanceText;
+  QString fiveHourBalanceText;
   QDateTime resetAt;
   QDateTime updatedAt;
   QString consoleUrl;

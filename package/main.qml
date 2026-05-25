@@ -54,6 +54,16 @@ AppletItem {
         return Math.round(ratio * 100) + "%"
     }
 
+    function fiveHourQuotaPercent(snapshot) {
+        const ratio = Math.max(0, Math.min(1, snapshot.fiveHourRemainingRatio >= 0 ? snapshot.fiveHourRemainingRatio : -1))
+        if (ratio < 0) {
+            const text = snapshot.fiveHourBalanceText || ""
+            if (text.length > 0) return text
+            return qsTr("N/A")
+        }
+        return Math.round(ratio * 100) + "%"
+    }
+
     function openLoginCenter(provider) {
         if (provider && provider.providerId) {
             root.selectedProvider = provider
@@ -250,12 +260,12 @@ AppletItem {
                                         anchors.fill: parent
                                         from: 0
                                         to: 1
-                                        value: Math.max(0, modelData.remainingRatio)
+                                        value: Math.max(0, modelData.fiveHourRemainingRatio >= 0 ? modelData.fiveHourRemainingRatio : modelData.remainingRatio)
                                     }
 
                                     Label {
                                         anchors.centerIn: parent
-                                        text: qsTr("5小时额度：%1").arg(root.quotaPercent(modelData))
+                                        text: qsTr("5小时额度：%1").arg(root.fiveHourQuotaPercent(modelData))
                                         font.pixelSize: 12
                                         font.bold: true
                                         color: DockPalette.iconTextPalette.color
@@ -397,8 +407,8 @@ AppletItem {
                         item.closeRequested.connect(function() {
                             webPopup.popupVisible = false
                         })
-                        item.extracted.connect(function(remainingRatio) {
-                            Applet.quota.setManualRatio(root.selectedProvider.providerId, remainingRatio)
+                        item.extracted.connect(function(result) {
+                            Applet.quota.setWebViewResult(root.selectedProvider.providerId, result)
                             webPopup.popupVisible = false
                         })
                         item.extractionFailed.connect(function(message) {
