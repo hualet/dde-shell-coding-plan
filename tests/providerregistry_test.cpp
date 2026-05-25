@@ -13,7 +13,9 @@ class ProviderRegistryTest : public QObject
 private slots:
   void builtInWebViewProvidersCoverMvpPlatforms ();
   void snapshotStatusMapsToPanelSeverity ();
-  void panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ();
+  void panelQmlLeftClickOpensStatusPopupWithoutWebEngine ();
+  void panelQmlRightClickOpensSettingsMenu ();
+  void appletLaunchesStandaloneSettingsWindow ();
   void standaloneAppSourceFilesExist ();
   void reactFrontendEntryExists ();
 };
@@ -60,7 +62,7 @@ ProviderRegistryTest::snapshotStatusMapsToPanelSeverity ()
 }
 
 void
-ProviderRegistryTest::panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ()
+ProviderRegistryTest::panelQmlLeftClickOpensStatusPopupWithoutWebEngine ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
@@ -74,11 +76,58 @@ ProviderRegistryTest::panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ()
   QVERIFY (qml.contains (QStringLiteral ("TapHandler")));
   QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.LeftButton")));
   QVERIFY (qml.contains (QStringLiteral ("onTapped:")));
-  QVERIFY (qml.contains (QStringLiteral ("root.openLoginCenter()")));
+  QVERIFY (qml.contains (QStringLiteral ("popup.open()")));
   QVERIFY (qml.contains (QStringLiteral ("webPopup.open()")));
+  QVERIFY (!qml.contains (QStringLiteral (
+      "Panel.requestClosePopup()\n                root.openLoginCenter()")));
   QVERIFY (!qml.contains (QStringLiteral ("webPopup.popupVisible = true")));
   QVERIFY (!qml.contains (QStringLiteral (
       "MouseArea {\n        anchors.fill: parent\n        onClicked: root.openLoginCenter()")));
+
+  const qsizetype popupStart = qml.indexOf (QStringLiteral ("id: popup"));
+  const qsizetype webPopupStart = qml.indexOf (QStringLiteral ("id: webPopup"));
+  QVERIFY (popupStart >= 0);
+  QVERIFY (webPopupStart > popupStart);
+
+  const QString statusPopup = qml.mid (popupStart, webPopupStart - popupStart);
+  QVERIFY (statusPopup.contains (QStringLiteral ("5小时额度")));
+  QVERIFY (statusPopup.contains (QStringLiteral ("周额度")));
+  QVERIFY (statusPopup.contains (QStringLiteral ("anchors.centerIn: parent")));
+  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Refresh\")")));
+  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Login\")")));
+  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Console\")")));
+  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Manual 50%\")")));
+}
+
+void
+ProviderRegistryTest::panelQmlRightClickOpensSettingsMenu ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (qml.contains (QStringLiteral ("import Qt.labs.platform 1.1 as LP")));
+  QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.RightButton")));
+  QVERIFY (qml.contains (QStringLiteral ("settingsMenuLoader.item.open()")));
+  QVERIFY (qml.contains (QStringLiteral ("text: qsTr(\"设置\")")));
+  QVERIFY (qml.contains (QStringLiteral ("Applet.showSettings()")));
+}
+
+void
+ProviderRegistryTest::appletLaunchesStandaloneSettingsWindow ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/codingplanapplet.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+  QVERIFY (headerContent.contains (QStringLiteral ("Q_INVOKABLE")));
+  QVERIFY (headerContent.contains (QStringLiteral ("showSettings")));
+
+  QFile source (QStringLiteral (SOURCE_DIR "/src/codingplanapplet.cpp"));
+  QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
+  const QString sourceContent = QString::fromUtf8 (source.readAll ());
+  QVERIFY (sourceContent.contains (QStringLiteral ("QProcess::startDetached")));
+  QVERIFY (sourceContent.contains (QStringLiteral ("/usr/bin/dde-coding-plan")));
+  QVERIFY (sourceContent.contains (QStringLiteral ("dde-coding-plan")));
 }
 
 void
@@ -96,13 +145,23 @@ ProviderRegistryTest::standaloneAppSourceFilesExist ()
   QVERIFY (content.contains (QStringLiteral ("QWebChannel")));
   QVERIFY (content.contains (QStringLiteral ("WebBridge")));
   QVERIFY (content.contains (QStringLiteral ("DMainWindow")));
+  QVERIFY (content.contains (QStringLiteral ("runJavaScript")));
+  QVERIFY (content.contains (QStringLiteral ("allowedOrigins")));
+  QVERIFY (content.contains (QStringLiteral ("setManualRatio")));
+  QVERIFY (content.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
+  QVERIFY (content.contains (QStringLiteral ("/usr/share/dde-coding-plan/web")));
+  QVERIFY (!content.contains (QStringLiteral ("qrc:/web/index.html")));
+  QVERIFY (!content.contains (QStringLiteral ("loadTranslator()")));
 }
 
 void
 ProviderRegistryTest::reactFrontendEntryExists ()
 {
   QFile indexHtml (QStringLiteral (SOURCE_DIR "/web/index.html"));
-  QVERIFY2 (indexHtml.exists (), "web/index.html should exist");
+  QVERIFY2 (indexHtml.open (QIODevice::ReadOnly), "web/index.html should be readable");
+  const QString indexContent = QString::fromUtf8 (indexHtml.readAll ());
+  QVERIFY (indexContent.contains (
+      QStringLiteral ("qrc:///qtwebchannel/qwebchannel.js")));
 
   QFile packageJson (QStringLiteral (SOURCE_DIR "/web/package.json"));
   QVERIFY2 (packageJson.open (QIODevice::ReadOnly), "web/package.json should be readable");
@@ -111,6 +170,14 @@ ProviderRegistryTest::reactFrontendEntryExists ()
   QVERIFY (content.contains (QStringLiteral ("@mui/material")));
   QVERIFY (content.contains (QStringLiteral ("react")));
   QVERIFY (content.contains (QStringLiteral ("react-router-dom")));
+
+  QFile cmakeLists (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
+  QVERIFY2 (cmakeLists.open (QIODevice::ReadOnly), "CMakeLists.txt should be readable");
+
+  const QString cmake = QString::fromUtf8 (cmakeLists.readAll ());
+  QVERIFY (cmake.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
+  QVERIFY (cmake.contains (QStringLiteral ("install(")));
+  QVERIFY (cmake.contains (QStringLiteral ("web/dist/")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

@@ -4,6 +4,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Qt.labs.platform 1.1 as LP
 import org.deepin.ds 1.0
 import org.deepin.ds.dock 1.0
 import org.deepin.dtk 1.0
@@ -46,6 +47,11 @@ AppletItem {
                 return items[index]
         }
         return {}
+    }
+
+    function quotaPercent(snapshot) {
+        const ratio = Math.max(0, Math.min(1, snapshot.remainingRatio || 0))
+        return Math.round(ratio * 100) + "%"
     }
 
     function openLoginCenter(provider) {
@@ -97,13 +103,42 @@ AppletItem {
         gesturePolicy: TapHandler.ReleaseWithinBounds
 
         onTapped: {
-            if (webPopup.popupVisible) {
-                webPopup.close()
+            if (popup.popupVisible) {
+                popup.close()
             } else {
                 Panel.requestClosePopup()
-                root.openLoginCenter()
+                popup.open()
             }
             toolTip.close()
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        preventStealing: true
+
+        onClicked: function(mouse) {
+            popup.close()
+            webPopup.close()
+            settingsMenuLoader.active = true
+            settingsMenuLoader.item.open()
+            mouse.accepted = true
+        }
+
+        onPressed: function(mouse) {
+            mouse.accepted = true
+        }
+    }
+
+    Loader {
+        id: settingsMenuLoader
+        active: false
+        sourceComponent: LP.Menu {
+            LP.MenuItem {
+                text: qsTr("设置")
+                onTriggered: Applet.showSettings()
+            }
         }
     }
 
@@ -188,16 +223,6 @@ AppletItem {
                         font.bold: true
                         Layout.fillWidth: true
                     }
-
-                    Button {
-                        text: qsTr("Refresh")
-                        onClicked: Applet.quota.refreshAll()
-                    }
-
-                    Button {
-                        text: qsTr("Login Center")
-                        onClicked: root.openLoginCenter()
-                    }
                 }
 
                 Repeater {
@@ -211,68 +236,52 @@ AppletItem {
                         border.color: Qt.rgba(0.5, 0.5, 0.5, 0.22)
                         implicitHeight: cardColumn.implicitHeight + 18
 
-                        ColumnLayout {
-                            id: cardColumn
-                            anchors.fill: parent
-                            anchors.margins: 9
-                            spacing: 8
+                            ColumnLayout {
+                                id: cardColumn
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 7
 
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Label {
-                                    text: modelData.providerName
-                                    font.bold: true
+                                Item {
                                     Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                                    Layout.preferredHeight: 28
+
+                                    ProgressBar {
+                                        anchors.fill: parent
+                                        from: 0
+                                        to: 1
+                                        value: Math.max(0, modelData.remainingRatio)
+                                    }
+
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: qsTr("5小时额度：%1").arg(root.quotaPercent(modelData))
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        color: DockPalette.iconTextPalette.color
+                                    }
                                 }
 
-                                Label {
-                                    text: modelData.source
-                                    opacity: 0.7
-                                }
-                            }
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 28
 
-                            ProgressBar {
-                                Layout.fillWidth: true
-                                from: 0
-                                to: 1
-                                value: Math.max(0, modelData.remainingRatio)
-                            }
+                                    ProgressBar {
+                                        anchors.fill: parent
+                                        from: 0
+                                        to: 1
+                                        value: Math.max(0, modelData.remainingRatio)
+                                    }
 
-                            Label {
-                                Layout.fillWidth: true
-                                text: modelData.remainingRatio >= 0
-                                      ? qsTr("%1 remaining").arg(Math.round(modelData.remainingRatio * 100) + "%")
-                                      : modelData.message
-                                wrapMode: Text.WordWrap
-                                opacity: 0.85
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-
-                                Button {
-                                    text: qsTr("Login")
-                                    onClicked: root.openLoginCenter(modelData)
-                                }
-
-                                Button {
-                                    text: qsTr("Console")
-                                    onClicked: Applet.quota.openConsole(modelData.providerId)
-                                }
-
-                                Button {
-                                    text: qsTr("Refresh")
-                                    onClicked: Applet.quota.refreshProvider(modelData.providerId)
-                                }
-
-                                Button {
-                                    text: qsTr("Manual 50%")
-                                    onClicked: Applet.quota.setManualRatio(modelData.providerId, 0.5)
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: qsTr("周额度：%1").arg(root.quotaPercent(modelData))
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                        color: DockPalette.iconTextPalette.color
+                                    }
                                 }
                             }
-                        }
                     }
                 }
             }

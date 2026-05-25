@@ -5,12 +5,17 @@ let bridgePromise = null;
 function getBridge() {
   if (bridgePromise) return bridgePromise;
   if (isQWebChannel()) {
+    if (typeof window.QWebChannel !== 'function') {
+      bridgePromise = Promise.resolve(null);
+      return bridgePromise;
+    }
+
     bridgePromise = new Promise((resolve) => {
       // eslint-disable-next-line no-undef
-      new QWebChannel(window.qt.webChannelTransport, (channel) => {
+      new window.QWebChannel(window.qt.webChannelTransport, (channel) => {
         resolve(channel.objects.bridge);
       });
-    });
+    }).catch(() => null);
   } else {
     bridgePromise = Promise.resolve(null);
   }
@@ -43,9 +48,12 @@ export async function fetchProviders() {
   const b = await getBridge();
   if (b) {
     return new Promise((resolve) => {
+      let attempts = 0;
       const check = () => {
         const p = b.providers;
         if (p && p.length > 0) { resolve(p); return; }
+        attempts += 1;
+        if (attempts >= 30) { resolve([]); return; }
         setTimeout(check, 100);
       };
       check();
@@ -58,9 +66,12 @@ export async function fetchSnapshots() {
   const b = await getBridge();
   if (b) {
     return new Promise((resolve) => {
+      let attempts = 0;
       const check = () => {
         const s = b.snapshots;
         if (s && s.length > 0) { resolve(s); return; }
+        attempts += 1;
+        if (attempts >= 30) { resolve([]); return; }
         setTimeout(check, 100);
       };
       check();
