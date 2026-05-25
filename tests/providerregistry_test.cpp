@@ -18,6 +18,8 @@ private slots:
   void appletLaunchesStandaloneSettingsWindow ();
   void standaloneAppSourceFilesExist ();
   void reactFrontendEntryExists ();
+  void kimiCodeProviderUrlsMatchCodeConsole ();
+  void kimiCodeExtractorTargetsConsoleSelectors ();
 };
 
 void
@@ -178,6 +180,47 @@ ProviderRegistryTest::reactFrontendEntryExists ()
   QVERIFY (cmake.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
   QVERIFY (cmake.contains (QStringLiteral ("install(")));
   QVERIFY (cmake.contains (QStringLiteral ("web/dist/")));
+}
+
+void
+ProviderRegistryTest::kimiCodeProviderUrlsMatchCodeConsole ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  QVERIFY (registry.contains (QStringLiteral ("kimi-code")));
+
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("kimi-code"));
+
+  QCOMPARE (provider.loginUrl,
+            QStringLiteral ("https://www.kimi.com/code/"));
+  QCOMPARE (provider.quotaUrl,
+            QStringLiteral ("https://www.kimi.com/code/console"));
+  QCOMPARE (provider.consoleUrl,
+            QStringLiteral ("https://www.kimi.com/code/console"));
+
+  QVERIFY (provider.allowedOrigins.contains (
+      QStringLiteral ("https://www.kimi.com")));
+  QCOMPARE (provider.sourceType, SourceType::WebView);
+  QVERIFY (!provider.extractorScript.isEmpty ());
+}
+
+void
+ProviderRegistryTest::kimiCodeExtractorTargetsConsoleSelectors ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("kimi-code"));
+
+  const QString script = provider.extractorScript;
+
+  QVERIFY (script.contains (QStringLiteral ("stats-section")));
+  QVERIFY (script.contains (QStringLiteral ("stats-desktop")));
+  QVERIFY (script.contains (QStringLiteral ("nth-child(1)")));
+  QVERIFY (script.contains (QStringLiteral ("nth-child(2)")));
+  QVERIFY (script.contains (QStringLiteral ("querySelector")));
+  QVERIFY (script.contains (QStringLiteral ("kimi-code")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHourBalanceText")));
+  QVERIFY (script.contains (QStringLiteral ("parse_error")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

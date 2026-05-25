@@ -41,6 +41,77 @@ webExtractorScript (const QString &providerId)
 )JS")
       .arg (metadataJson);
 }
+
+QString
+kimiCodeExtractorScript ()
+{
+  const QJsonObject metadata{ { QStringLiteral ("provider"),
+                                QStringLiteral ("kimi-code") } };
+  const QString metadataJson = QString::fromUtf8 (
+      QJsonDocument (metadata).toJson (QJsonDocument::Compact));
+
+  return QStringLiteral (R"JS(
+(function() {
+  const metadata = %1;
+  var parsed = { weekly: null, fiveHour: null };
+
+  function readQuotaElement(selector) {
+    var el = document.querySelector(selector);
+    if (!el) return null;
+    var text = el.innerText || el.textContent || "";
+    var percentMatch = text.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
+    if (percentMatch) {
+      return {
+        ratio: Math.max(0, Math.min(100, Number(percentMatch[1]))) / 100,
+        text: percentMatch[0]
+      };
+    }
+    var numMatch = text.match(/(\d+(?:\.\d+)?)/);
+    if (numMatch) {
+      return { ratio: null, text: numMatch[0] };
+    }
+    return null;
+  }
+
+  var weekly = readQuotaElement(
+    "#app > div > div.app > div > div > main > section.stats-section > div.stats-desktop > div:nth-child(1)"
+  );
+  var fiveHour = readQuotaElement(
+    "#app > div > div.app > div > div > main > section.stats-section > div.stats-desktop > div:nth-child(2)"
+  );
+
+  if (!weekly && !fiveHour) {
+    return {
+      providerId: metadata.provider,
+      status: "parse_error",
+      message: "未在 Kimi Code 控制台识别到额度信息，请确认已登录且控制台页面已完全加载。",
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  var result = {
+    providerId: metadata.provider,
+    status: "ok",
+    updatedAt: new Date().toISOString()
+  };
+
+  if (weekly) {
+    result.remainingRatio = weekly.ratio !== null ? weekly.ratio : -1;
+    result.balanceText = weekly.text;
+  }
+  if (fiveHour) {
+    result.fiveHourBalanceText = fiveHour.text;
+    if (weekly === null && fiveHour.ratio !== null) {
+      result.remainingRatio = fiveHour.ratio;
+      result.balanceText = fiveHour.text;
+    }
+  }
+
+  return result;
+})()
+)JS")
+      .arg (metadataJson);
+}
 }
 
 PanelSeverity
@@ -120,13 +191,13 @@ ProviderRegistry::createDefault ()
       { QStringLiteral ("kimi-code"),
         QStringLiteral ("Kimi Code"),
         SourceType::WebView,
-        QStringLiteral ("https://www.kimi.com/login"),
-        QStringLiteral ("https://www.kimi.com/"),
-        QStringLiteral ("https://www.kimi.com/"),
+        QStringLiteral ("https://www.kimi.com/code/"),
+        QStringLiteral ("https://www.kimi.com/code/console"),
+        QStringLiteral ("https://www.kimi.com/code/console"),
         { QStringLiteral ("https://www.kimi.com"),
           QStringLiteral ("https://kimi.moonshot.cn"),
           QStringLiteral ("https://platform.moonshot.cn") },
-        webExtractorScript (QStringLiteral ("kimi-code")) });
+        kimiCodeExtractorScript () });
 
   registry.addProvider (
       { QStringLiteral ("glm-coding"),
