@@ -14,6 +14,8 @@ private slots:
   void builtInWebViewProvidersCoverMvpPlatforms ();
   void snapshotStatusMapsToPanelSeverity ();
   void panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ();
+  void standaloneAppSourceFilesExist ();
+  void reactFrontendEntryExists ();
 };
 
 void
@@ -77,6 +79,38 @@ ProviderRegistryTest::panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ()
   QVERIFY (!qml.contains (QStringLiteral ("webPopup.popupVisible = true")));
   QVERIFY (!qml.contains (QStringLiteral (
       "MouseArea {\n        anchors.fill: parent\n        onClicked: root.openLoginCenter()")));
+}
+
+void
+ProviderRegistryTest::standaloneAppSourceFilesExist ()
+{
+  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (mainCpp.exists (), "app/main.cpp should exist");
+  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), "app/main.cpp should be readable");
+
+  QFile webbridge (QStringLiteral (SOURCE_DIR "/app/webbridge.h"));
+  QVERIFY2 (webbridge.exists (), "app/webbridge.h should exist");
+
+  const QString content = QString::fromUtf8 (mainCpp.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("QWebEngineView")));
+  QVERIFY (content.contains (QStringLiteral ("QWebChannel")));
+  QVERIFY (content.contains (QStringLiteral ("WebBridge")));
+  QVERIFY (content.contains (QStringLiteral ("DMainWindow")));
+}
+
+void
+ProviderRegistryTest::reactFrontendEntryExists ()
+{
+  QFile indexHtml (QStringLiteral (SOURCE_DIR "/web/index.html"));
+  QVERIFY2 (indexHtml.exists (), "web/index.html should exist");
+
+  QFile packageJson (QStringLiteral (SOURCE_DIR "/web/package.json"));
+  QVERIFY2 (packageJson.open (QIODevice::ReadOnly), "web/package.json should be readable");
+
+  const QString content = QString::fromUtf8 (packageJson.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("@mui/material")));
+  QVERIFY (content.contains (QStringLiteral ("react")));
+  QVERIFY (content.contains (QStringLiteral ("react-router-dom")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
