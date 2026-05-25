@@ -69,7 +69,14 @@ ProviderRegistryTest::panelQmlUsesClassicTaskbarOrderAndDirectLoginCenter ()
   QVERIFY (qml.contains (
       QStringLiteral ("dockOrder: useClassicTaskbarLayout ? 21 : 10")));
   QVERIFY (qml.contains (QStringLiteral ("function openLoginCenter")));
-  QVERIFY (qml.contains (QStringLiteral ("onClicked: root.openLoginCenter()")));
+  QVERIFY (qml.contains (QStringLiteral ("TapHandler")));
+  QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.LeftButton")));
+  QVERIFY (qml.contains (QStringLiteral ("onTapped:")));
+  QVERIFY (qml.contains (QStringLiteral ("root.openLoginCenter()")));
+  QVERIFY (qml.contains (QStringLiteral ("webPopup.open()")));
+  QVERIFY (!qml.contains (QStringLiteral ("webPopup.popupVisible = true")));
+  QVERIFY (!qml.contains (QStringLiteral (
+      "MouseArea {\n        anchors.fill: parent\n        onClicked: root.openLoginCenter()")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

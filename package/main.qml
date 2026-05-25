@@ -55,8 +55,8 @@ AppletItem {
             root.selectedProvider = root.quotaSnapshots[0]
         }
 
-        popup.popupVisible = false
-        webPopup.popupVisible = true
+        popup.close()
+        webPopup.open()
         root.configureWebView()
     }
 
@@ -92,9 +92,19 @@ AppletItem {
         }
     }
 
-    MouseArea {
-        anchors.fill: parent
-        onClicked: root.openLoginCenter()
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        gesturePolicy: TapHandler.ReleaseWithinBounds
+
+        onTapped: {
+            if (webPopup.popupVisible) {
+                webPopup.close()
+            } else {
+                Panel.requestClosePopup()
+                root.openLoginCenter()
+            }
+            toolTip.close()
+        }
     }
 
     Row {
