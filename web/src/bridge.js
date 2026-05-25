@@ -1,14 +1,20 @@
-let bridge = null;
+const isQWebChannel = () => !!(window.qt && window.qt.webChannelTransport);
+
+let bridgePromise = null;
 
 function getBridge() {
-  if (bridge) return bridge;
-  if (window.qt && window.qt.webChannelTransport) {
-    // eslint-disable-next-line no-undef
-    new QWebChannel(window.qt.webChannelTransport, (channel) => {
-      bridge = channel.objects.bridge;
+  if (bridgePromise) return bridgePromise;
+  if (isQWebChannel()) {
+    bridgePromise = new Promise((resolve) => {
+      // eslint-disable-next-line no-undef
+      new QWebChannel(window.qt.webChannelTransport, (channel) => {
+        resolve(channel.objects.bridge);
+      });
     });
+  } else {
+    bridgePromise = Promise.resolve(null);
   }
-  return bridge;
+  return bridgePromise;
 }
 
 const MOCK_PROVIDERS = [
@@ -23,50 +29,44 @@ const MOCK_SNAPSHOTS = [
   { providerId: 'glm-coding', providerName: 'GLM Coding', source: 'webview', status: 'ok', severity: 'warning', remainingRatio: 0.22, used: -1, total: -1, unit: '', balanceText: '22%', message: '', updatedAt: new Date().toISOString(), consoleUrl: 'https://open.bigmodel.cn/usercenter/overview' },
 ];
 
-const isQWebChannel = () => !!(window.qt && window.qt.webChannelTransport);
-
-function callBridge(method, ...args) {
-  const b = getBridge();
+async function callBridge(method, ...args) {
+  const b = await getBridge();
   if (b && typeof b[method] === 'function') {
     return new Promise((resolve) => {
       b[method](...args, (result) => resolve(result));
     });
   }
-  return Promise.resolve(null);
+  return null;
 }
 
 export async function fetchProviders() {
-  if (isQWebChannel()) {
-    const b = getBridge();
-    if (b) {
-      return new Promise((resolve) => {
-        const check = () => {
-          const p = b.providers;
-          if (p && p.length > 0) { resolve(p); return; }
-          setTimeout(check, 100);
-        };
-        check();
-      });
-    }
+  const b = await getBridge();
+  if (b) {
+    return new Promise((resolve) => {
+      const check = () => {
+        const p = b.providers;
+        if (p && p.length > 0) { resolve(p); return; }
+        setTimeout(check, 100);
+      };
+      check();
+    });
   }
-  return Promise.resolve(MOCK_PROVIDERS);
+  return MOCK_PROVIDERS;
 }
 
 export async function fetchSnapshots() {
-  if (isQWebChannel()) {
-    const b = getBridge();
-    if (b) {
-      return new Promise((resolve) => {
-        const check = () => {
-          const s = b.snapshots;
-          if (s && s.length > 0) { resolve(s); return; }
-          setTimeout(check, 100);
-        };
-        check();
-      });
-    }
+  const b = await getBridge();
+  if (b) {
+    return new Promise((resolve) => {
+      const check = () => {
+        const s = b.snapshots;
+        if (s && s.length > 0) { resolve(s); return; }
+        setTimeout(check, 100);
+      };
+      check();
+    });
   }
-  return Promise.resolve(MOCK_SNAPSHOTS);
+  return MOCK_SNAPSHOTS;
 }
 
 export async function refreshAll() {
