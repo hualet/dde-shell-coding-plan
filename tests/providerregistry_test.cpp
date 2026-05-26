@@ -158,7 +158,7 @@ ProviderRegistryTest::standaloneAppSourceFilesExist ()
   QVERIFY (content.contains (QStringLiteral ("DMainWindow")));
   QVERIFY (content.contains (QStringLiteral ("runJavaScript")));
   QVERIFY (content.contains (QStringLiteral ("allowedOrigins")));
-  QVERIFY (content.contains (QStringLiteral ("setManualRatio")));
+  QVERIFY (content.contains (QStringLiteral ("setWebViewResult")));
   QVERIFY (content.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
   QVERIFY (content.contains (QStringLiteral ("/usr/share/dde-coding-plan/web")));
   QVERIFY (!content.contains (QStringLiteral ("qrc:/web/index.html")));
