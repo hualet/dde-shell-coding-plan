@@ -208,8 +208,9 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
 
   if (result.contains (QStringLiteral ("remainingRatio")))
     {
-      const double weeklyRatio = result.value (QStringLiteral ("remainingRatio")).toDouble ();
-      snapshot.remainingRatio = weeklyRatio >= 0 ? std::max (0.0, std::min (1.0, weeklyRatio)) : -1.0;
+      bool ok = false;
+      const double weeklyRatio = result.value (QStringLiteral ("remainingRatio")).toDouble (&ok);
+      snapshot.remainingRatio = (ok && weeklyRatio >= 0) ? std::max (0.0, std::min (1.0, weeklyRatio)) : -1.0;
     }
   else
     {
@@ -219,8 +220,9 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
 
   if (result.contains (QStringLiteral ("fiveHourRemainingRatio")))
     {
-      const double fiveHourRatio = result.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble ();
-      snapshot.fiveHourRemainingRatio = fiveHourRatio >= 0 ? std::max (0.0, std::min (1.0, fiveHourRatio)) : -1.0;
+      bool ok = false;
+      const double fiveHourRatio = result.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (&ok);
+      snapshot.fiveHourRemainingRatio = (ok && fiveHourRatio >= 0) ? std::max (0.0, std::min (1.0, fiveHourRatio)) : -1.0;
     }
   else
     {
