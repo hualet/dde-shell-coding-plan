@@ -34,6 +34,28 @@ Item {
         return false
     }
 
+    function _urlBasePath(url) {
+        var schemeEnd = url.indexOf("://")
+        if (schemeEnd < 0) return url
+        var pathStart = url.indexOf("/", schemeEnd + 3)
+        if (pathStart < 0) return url
+        var end = url.length
+        var q = url.indexOf("?", pathStart)
+        var h = url.indexOf("#", pathStart)
+        if (q >= 0) end = Math.min(end, q)
+        if (h >= 0) end = Math.min(end, h)
+        return url.substring(0, end)
+    }
+
+    function _isOnLoginPage(url) {
+        var urlStr = url.toString()
+        if (urlStr.indexOf("/login") >= 0)
+            return true
+        var loginBase = root._urlBasePath(root.loginUrl.toString())
+        var currentBase = root._urlBasePath(urlStr)
+        return currentBase === loginBase
+    }
+
     function startAutoExtract() {
         root._autoMode = true
         root._autoPhase = 1
@@ -42,10 +64,9 @@ Item {
 
     function _onNavigationFinished(ok) {
         if (!ok || !root._autoMode) return
-        const currentUrl = webView.url.toString()
 
         if (root._autoPhase === 1) {
-            if (root.isAllowedOrigin(webView.url) && currentUrl.indexOf("/login") === -1) {
+            if (root.isAllowedOrigin(webView.url) && !root._isOnLoginPage(webView.url)) {
                 root._autoPhase = 2
                 webView.url = root.quotaUrl
             }
