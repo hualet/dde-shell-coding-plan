@@ -287,7 +287,10 @@ CodingPlanModel::setProviderError (const QString &providerId,
     }
 
   QuotaSnapshot snapshot = m_snapshots.at (index);
-  snapshot.status = SnapshotStatus::ParseError;
+  if (snapshot.status != SnapshotStatus::Authenticated)
+    {
+      snapshot.status = SnapshotStatus::ParseError;
+    }
   snapshot.message = message.trimmed ().isEmpty ()
                          ? QStringLiteral ("读取失败，请打开控制台人工确认或手动录入。")
                          : message.trimmed ();
