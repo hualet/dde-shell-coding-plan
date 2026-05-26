@@ -6,6 +6,7 @@
 #include <DApplication>
 #include <DMainWindow>
 #include <DWidgetUtil>
+#include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEngineView>
@@ -38,7 +39,8 @@ public:
         m_webView = new QWebEngineView(this);
         setCentralWidget(m_webView);
 
-        m_webView->page()->setProfile(m_profile);
+        auto *page = new QWebEnginePage(m_profile, this);
+        m_webView->setPage(page);
         m_webView->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
         m_webView->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
 
