@@ -55,12 +55,13 @@ AppletItem {
     }
 
     function fiveHourQuotaPercent(snapshot) {
-        const ratio = Math.max(0, Math.min(1, snapshot.fiveHourRemainingRatio >= 0 ? snapshot.fiveHourRemainingRatio : -1))
-        if (ratio < 0) {
+        const raw = snapshot.fiveHourRemainingRatio
+        if (raw === undefined || raw === null || raw < 0) {
             const text = snapshot.fiveHourBalanceText || ""
             if (text.length > 0) return text
             return qsTr("N/A")
         }
+        const ratio = Math.max(0, Math.min(1, raw))
         return Math.round(ratio * 100) + "%"
     }
 

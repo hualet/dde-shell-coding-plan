@@ -21,6 +21,8 @@ private slots:
   void kimiCodeProviderUrlsMatchCodeConsole ();
   void kimiCodeExtractorTargetsConsoleSelectors ();
   void kimiCodeDualQuotaSnapshotContract ();
+  void fiveHourDefaultIsNegativeOne ();
+  void kimiCodeExtractorOmitsFieldsOnNull ();
 };
 
 void
@@ -257,6 +259,34 @@ ProviderRegistryTest::kimiCodeDualQuotaSnapshotContract ()
   QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
   QVERIFY (script.contains (QStringLiteral ("weekly")));
   QVERIFY (script.contains (QStringLiteral ("fiveHour")));
+}
+
+void
+ProviderRegistryTest::fiveHourDefaultIsNegativeOne ()
+{
+  QuotaSnapshot snapshot;
+  QCOMPARE (snapshot.fiveHourRemainingRatio, -1.0);
+
+  const QVariantMap map = snapshot.toVariantMap ();
+  QVERIFY (map.contains (QStringLiteral ("fiveHourRemainingRatio")));
+  QCOMPARE (map.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), -1.0);
+  QCOMPARE (map.value (QStringLiteral ("fiveHourBalanceText")).toString (),
+            QString ());
+}
+
+void
+ProviderRegistryTest::kimiCodeExtractorOmitsFieldsOnNull ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("kimi-code"));
+  const QString script = provider.extractorScript;
+
+  QVERIFY (script.contains (QStringLiteral ("if (weekly)")));
+  QVERIFY (script.contains (QStringLiteral ("if (fiveHour)")));
+
+  QVERIFY (!script.contains (QStringLiteral ("fiveHourRemainingRatio: 0")));
+  QVERIFY (!script.contains (QStringLiteral ("remainingRatio: 0")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
