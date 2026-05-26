@@ -98,27 +98,27 @@ Item {
     }
 
     function _checkLoginSuccess() {
-        webView.runJavaScript("(function(){ return document.cookie.length > 0 ? document.cookie : ''; })()", function(cookies) {
-            if (!root._autoMode || root._autoPhase !== 1) return
+        if (!root._autoMode || root._autoPhase !== 1) return
 
-            if (root._isOnQuotaPage(webView.url)) {
-                root._autoPhase = 2
-                root._runExtraction()
-                return
-            }
+        if (root._isOnQuotaPage(webView.url)) {
+            root._autoPhase = 2
+            root._runExtraction()
+            return
+        }
 
-            if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
-                root._autoPhase = 2
-                webView.url = root.quotaUrl
-                return
-            }
+        if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
+            root._autoPhase = 2
+            webView.url = root.quotaUrl
+            return
+        }
 
-            loginCheckTimer.start()
-        })
+        loginCheckTimer.start()
     }
 
     function _onNavigationFinished(ok) {
         if (!ok || !root._autoMode) return
+
+        if (loginCheckTimer._probingConsole) return
 
         if (root._autoPhase === 1) {
             if (root._isOnQuotaPage(webView.url)) {
@@ -172,34 +172,36 @@ Item {
 
     Timer {
         id: loginCheckTimer
-        interval: 1500
+        interval: 2500
         repeat: false
+        property bool _probingConsole: false
         onTriggered: {
             if (!root._autoMode || root._autoPhase !== 1) return
 
-            if (root._isOnQuotaPage(webView.url)) {
-                root._autoPhase = 2
-                root._runExtraction()
-                return
-            }
-
-            if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
-                root._autoPhase = 2
+            if (!_probingConsole) {
+                _probingConsole = true
                 webView.url = root.quotaUrl
-                return
-            }
-
-            webView.runJavaScript("(function(){ try { var el = document.querySelector('#app'); if (el && el.innerText && el.innerText.length > 50) return true; } catch(e){} return false; })()", function(hasContent) {
-                if (!root._autoMode || root._autoPhase !== 1) return
-
-                if (hasContent === true) {
-                    root._autoPhase = 2
-                    webView.url = root.quotaUrl
-                    return
-                }
-
                 loginCheckTimer.start()
-            })
+            } else {
+                if (root.isAllowedOrigin(webView.url)) {
+                    webView.runJavaScript(root.extractorScript, function(result) {
+                        if (!root._autoMode || root._autoPhase !== 1) return
+                        if (result && typeof result === "object" && result.status === "ok") {
+                            _probingConsole = false
+                            root._autoPhase = 2
+                            root._runExtraction()
+                        } else {
+                            _probingConsole = false
+                            webView.url = root.loginUrl
+                            loginCheckTimer.start()
+                        }
+                    })
+                } else {
+                    _probingConsole = false
+                    webView.url = root.loginUrl
+                    loginCheckTimer.start()
+                }
+            }
         }
     }
 
@@ -207,6 +209,7 @@ Item {
         id: webProfile
         storageName: "coding-plan-" + root.providerId
         offTheRecord: false
+        persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
     }
 
     ColumnLayout {
