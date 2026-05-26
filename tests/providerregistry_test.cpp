@@ -28,6 +28,7 @@ private slots:
   void webViewAcceptsTextOnlyResult ();
   void loginPageDetectionBlocksPrematureExtraction ();
   void mainCppLoginGuardBlocksReload ();
+  void nullResultDoesNotCrashAndEntersFailureCallback ();
 };
 
 void
@@ -410,3 +411,42 @@ ProviderRegistryTest::mainCppLoginGuardBlocksReload ()
 QTEST_MAIN (ProviderRegistryTest)
 
 #include "providerregistry_test.moc"
+
+void
+ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype runJsStart = qml.indexOf (QStringLiteral ("runJavaScript"));
+  QVERIFY (runJsStart >= 0);
+
+  const qsizetype callbackStart = qml.indexOf (QStringLiteral ("function(result)"), runJsStart);
+  QVERIFY (callbackStart >= 0);
+
+  const qsizetype callbackEnd = qml.indexOf (QStringLiteral ("})", callbackStart);
+  QVERIFY (callbackEnd > callbackStart);
+
+  const QString callback = qml.mid (callbackStart, callbackEnd - callbackStart + 2);
+
+  QVERIFY (callback.contains (QStringLiteral (
+      "if (!result || typeof result !== \"object\")")));
+
+  const qsizetype guardPos = callback.indexOf (
+      QStringLiteral ("if (!result || typeof result !== \"object\")"));
+  QVERIFY (guardPos >= 0);
+
+  const qsizetype hasRatioPos = callback.indexOf (
+      QStringLiteral ("var hasRatio"));
+  QVERIFY (hasRatioPos >= 0);
+  QVERIFY (hasRatioPos > guardPos);
+
+  const qsizetype extractionFailedPos = callback.indexOf (
+      QStringLiteral ("extractionFailed"), guardPos);
+  QVERIFY (extractionFailedPos >= 0);
+  QVERIFY (extractionFailedPos < hasRatioPos);
+
+  QVERIFY (callback.contains (QStringLiteral ("_autoMode = false")));
+}
