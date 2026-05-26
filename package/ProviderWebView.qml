@@ -86,14 +86,19 @@ Item {
         }
 
         webView.runJavaScript(root.extractorScript, function(result) {
+            if (!result || typeof result !== "object") {
+                root.extractionFailed(qsTr("Quota could not be read from this page."))
+                root._autoMode = false
+                return
+            }
             var hasRatio = (typeof result.remainingRatio === "number" && result.remainingRatio >= 0)
                          || (typeof result.fiveHourRemainingRatio === "number" && result.fiveHourRemainingRatio >= 0)
             var hasText = (typeof result.balanceText === "string" && result.balanceText.length > 0)
                        || (typeof result.fiveHourBalanceText === "string" && result.fiveHourBalanceText.length > 0)
-            if (result && result.status === "ok" && (hasRatio || hasText)) {
+            if (result.status === "ok" && (hasRatio || hasText)) {
                 root.extracted(result)
             } else {
-                root.extractionFailed(result && result.message ? result.message : qsTr("Quota could not be read from this page."))
+                root.extractionFailed(result.message ? result.message : qsTr("Quota could not be read from this page."))
             }
             root._autoMode = false
         })
