@@ -20,6 +20,7 @@ AppletItem {
     readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
     property var selectedProvider: ({})
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
+    property bool _reopenPopupAfterWebClose: false
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * 24 + 16)
     implicitHeight: dockSize
@@ -306,6 +307,13 @@ AppletItem {
         popupX: DockPanelPositioner.x
         popupY: DockPanelPositioner.y
 
+        onPopupVisibleChanged: {
+            if (!webPopup.popupVisible && root._reopenPopupAfterWebClose) {
+                root._reopenPopupAfterWebClose = false
+                popup.open()
+            }
+        }
+
         Control {
             anchors.fill: parent
             padding: 12
@@ -364,7 +372,9 @@ AppletItem {
                                     }
 
                                     Label {
-                                        text: modelData.status === "ok" ? qsTr("Signed in") : qsTr("Login needed")
+                                        text: modelData.status === "ok" ? qsTr("Signed in")
+                                             : modelData.status === "authenticated" ? qsTr("Authenticated")
+                                             : qsTr("Login needed")
                                         color: root.severityColor(modelData.severity)
                                     }
                                 }
@@ -417,6 +427,9 @@ AppletItem {
                         item.extractionFailed.connect(function(message) {
                             Applet.quota.setProviderError(root.selectedProvider.providerId, message)
                         })
+                        item.loginSucceeded.connect(function(providerId) {
+                            Applet.quota.setProviderAuthenticated(providerId)
+                        })
                         if (root.selectedProvider.providerId) {
                             item.startAutoExtract()
                         }
@@ -431,6 +444,7 @@ AppletItem {
         interval: 800
         repeat: false
         onTriggered: {
+            root._reopenPopupAfterWebClose = true
             webPopup.popupVisible = false
         }
     }

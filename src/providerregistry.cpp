@@ -124,6 +124,12 @@ QuotaSnapshot::severity () const
     case SnapshotStatus::Warning:
     case SnapshotStatus::Exhausted:
       break;
+    case SnapshotStatus::Authenticated:
+      if (remainingRatio < 0)
+        {
+          return PanelSeverity::Warning;
+        }
+      break;
     case SnapshotStatus::AuthError:
     case SnapshotStatus::RateLimited:
     case SnapshotStatus::Unsupported:
@@ -289,6 +295,8 @@ snapshotStatusToString (SnapshotStatus status)
       return QStringLiteral ("exhausted");
     case SnapshotStatus::AuthError:
       return QStringLiteral ("auth_error");
+    case SnapshotStatus::Authenticated:
+      return QStringLiteral ("authenticated");
     case SnapshotStatus::RateLimited:
       return QStringLiteral ("rate_limited");
     case SnapshotStatus::Unsupported:
