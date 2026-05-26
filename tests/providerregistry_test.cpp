@@ -26,6 +26,8 @@ private slots:
   void fiveHourMissingFieldStaysNegativeOne ();
   void fiveHourQuotaPercentFallsBackToText ();
   void webViewAcceptsTextOnlyResult ();
+  void loginPageDetectionBlocksPrematureExtraction ();
+  void mainCppLoginGuardBlocksReload ();
 };
 
 void
@@ -362,6 +364,47 @@ ProviderRegistryTest::webViewAcceptsTextOnlyResult ()
 
   QVERIFY (qml.contains (QStringLiteral ("typeof result.remainingRatio")));
   QVERIFY (qml.contains (QStringLiteral ("typeof result.balanceText")));
+}
+
+void
+ProviderRegistryTest::loginPageDetectionBlocksPrematureExtraction ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (qml.contains (QStringLiteral ("_isOnLoginPage")));
+  QVERIFY (qml.contains (QStringLiteral ("_urlBasePath")));
+
+  QVERIFY (!qml.contains (QStringLiteral (
+      "indexOf(\"/login\") === -1")));
+
+  QVERIFY (qml.contains (QStringLiteral (
+      "!root._isOnLoginPage(webView.url)")));
+
+  const qsizetype phaseOneStart = qml.indexOf (
+      QStringLiteral ("_autoPhase === 1"));
+  QVERIFY (phaseOneStart >= 0);
+  const qsizetype phaseOneEnd = qml.indexOf (
+      QStringLiteral ("} else if"), phaseOneStart);
+  QVERIFY (phaseOneEnd > phaseOneStart);
+
+  const QString phaseOne = qml.mid (phaseOneStart, phaseOneEnd - phaseOneStart);
+  QVERIFY (phaseOne.contains (QStringLiteral ("_isOnLoginPage")));
+}
+
+void
+ProviderRegistryTest::mainCppLoginGuardBlocksReload ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString cpp = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (cpp.contains (QStringLiteral ("onLoginPage && m_loginPhase == 0")));
+  QVERIFY (cpp.contains (QStringLiteral ("onLoginPage)")));
+  QVERIFY (cpp.contains (QStringLiteral ("QUrl(loginPath).path()")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

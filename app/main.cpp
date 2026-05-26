@@ -113,6 +113,10 @@ private slots:
             return;
         }
 
+        if (onLoginPage) {
+            return;
+        }
+
         if (m_loginPhase == 0) {
             m_loginPhase = 1;
         }
