@@ -23,6 +23,8 @@ private slots:
   void kimiCodeDualQuotaSnapshotContract ();
   void fiveHourDefaultIsNegativeOne ();
   void kimiCodeExtractorOmitsFieldsOnNull ();
+  void fiveHourMissingFieldStaysNegativeOne ();
+  void fiveHourQuotaPercentFallsBackToText ();
 };
 
 void
@@ -287,6 +289,57 @@ ProviderRegistryTest::kimiCodeExtractorOmitsFieldsOnNull ()
 
   QVERIFY (!script.contains (QStringLiteral ("fiveHourRemainingRatio: 0")));
   QVERIFY (!script.contains (QStringLiteral ("remainingRatio: 0")));
+}
+
+void
+ProviderRegistryTest::fiveHourMissingFieldStaysNegativeOne ()
+{
+  QuotaSnapshot snapshot;
+  snapshot.providerId = QStringLiteral ("codex");
+  snapshot.providerName = QStringLiteral ("Codex / ChatGPT");
+  snapshot.status = SnapshotStatus::Ok;
+  snapshot.remainingRatio = 0.80;
+  snapshot.balanceText = QStringLiteral ("80%");
+  snapshot.fiveHourRemainingRatio = -1.0;
+  snapshot.fiveHourBalanceText = QString ();
+
+  const QVariantMap map = snapshot.toVariantMap ();
+
+  QCOMPARE (map.value (QStringLiteral ("remainingRatio")).toDouble (), 0.80);
+  QCOMPARE (map.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), -1.0);
+  QVERIFY (map.value (QStringLiteral ("fiveHourBalanceText")).toString ().isEmpty ());
+
+  QuotaSnapshot roundTripped;
+  roundTripped.status = SnapshotStatus::Ok;
+  roundTripped.remainingRatio = map.value (QStringLiteral ("remainingRatio")).toDouble ();
+  roundTripped.fiveHourRemainingRatio = map.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble ();
+  roundTripped.fiveHourBalanceText = map.value (QStringLiteral ("fiveHourBalanceText")).toString ();
+
+  QCOMPARE (roundTripped.remainingRatio, 0.80);
+  QCOMPARE (roundTripped.fiveHourRemainingRatio, -1.0);
+  QVERIFY (roundTripped.fiveHourBalanceText.isEmpty ());
+}
+
+void
+ProviderRegistryTest::fiveHourQuotaPercentFallsBackToText ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (qml.contains (QStringLiteral ("function fiveHourQuotaPercent(snapshot)")));
+  QVERIFY (qml.contains (QStringLiteral ("raw < 0")));
+
+  const qsizetype fnStart = qml.indexOf (QStringLiteral ("function fiveHourQuotaPercent"));
+  QVERIFY (fnStart >= 0);
+  const qsizetype fnEnd = qml.indexOf (QLatin1Char ('}'), qml.indexOf (QLatin1Char ('}'), fnStart + 1) + 1);
+  const QString fnBody = qml.mid (fnStart, fnEnd - fnStart + 1);
+
+  QVERIFY (fnBody.contains (QStringLiteral ("N/A")));
+  QVERIFY (fnBody.contains (QStringLiteral ("fiveHourBalanceText")));
+
+  QVERIFY (!fnBody.contains (QStringLiteral ("Math.max(0, Math.min(1, snapshot.fiveHourRemainingRatio")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
