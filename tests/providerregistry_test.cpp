@@ -426,7 +426,7 @@ ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
   const qsizetype callbackStart = qml.indexOf (QStringLiteral ("function(result)"), runJsStart);
   QVERIFY (callbackStart >= 0);
 
-  const qsizetype callbackEnd = qml.indexOf (QStringLiteral ("})", callbackStart);
+  const qsizetype callbackEnd = qml.indexOf (QStringLiteral ("})"), callbackStart);
   QVERIFY (callbackEnd > callbackStart);
 
   const QString callback = qml.mid (callbackStart, callbackEnd - callbackStart + 2);
