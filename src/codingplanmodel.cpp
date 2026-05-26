@@ -206,12 +206,26 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
 
   QuotaSnapshot snapshot = m_snapshots.at (index);
 
-  const double weeklyRatio = result.value (QStringLiteral ("remainingRatio")).toDouble ();
-  snapshot.remainingRatio = weeklyRatio >= 0 ? std::max (0.0, std::min (1.0, weeklyRatio)) : -1.0;
+  if (result.contains (QStringLiteral ("remainingRatio")))
+    {
+      const double weeklyRatio = result.value (QStringLiteral ("remainingRatio")).toDouble ();
+      snapshot.remainingRatio = weeklyRatio >= 0 ? std::max (0.0, std::min (1.0, weeklyRatio)) : -1.0;
+    }
+  else
+    {
+      snapshot.remainingRatio = -1.0;
+    }
   snapshot.balanceText = result.value (QStringLiteral ("balanceText")).toString ();
 
-  const double fiveHourRatio = result.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble ();
-  snapshot.fiveHourRemainingRatio = fiveHourRatio >= 0 ? std::max (0.0, std::min (1.0, fiveHourRatio)) : -1.0;
+  if (result.contains (QStringLiteral ("fiveHourRemainingRatio")))
+    {
+      const double fiveHourRatio = result.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble ();
+      snapshot.fiveHourRemainingRatio = fiveHourRatio >= 0 ? std::max (0.0, std::min (1.0, fiveHourRatio)) : -1.0;
+    }
+  else
+    {
+      snapshot.fiveHourRemainingRatio = -1.0;
+    }
   snapshot.fiveHourBalanceText = result.value (QStringLiteral ("fiveHourBalanceText")).toString ();
 
   snapshot.status = SnapshotStatus::Ok;
