@@ -20,10 +20,12 @@ Item {
     property int _autoPhase: 0
     property string _preLoginUrl: ""
     property bool _wasAutoMode: false
+    property bool _loginSucceeded: false
 
     signal closeRequested()
     signal extracted(var result)
     signal extractionFailed(string message)
+    signal loginSucceeded(string providerId)
 
     function isAllowedOrigin(pageUrl) {
         const origin = pageUrl.toString().match(/^https?:\/\/[^/]+/)
@@ -91,6 +93,7 @@ Item {
     }
 
     function startAutoExtract() {
+        if (!root.webProfileConfigured) return
         root._autoMode = true
         root._autoPhase = 1
         root._preLoginUrl = webView.url.toString()
@@ -101,12 +104,20 @@ Item {
         if (!root._autoMode || root._autoPhase !== 1) return
 
         if (root._isOnQuotaPage(webView.url)) {
+            if (!root._loginSucceeded) {
+                root._loginSucceeded = true
+                root.loginSucceeded(root.providerId)
+            }
             root._autoPhase = 2
             root._runExtraction()
             return
         }
 
         if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
+            if (!root._loginSucceeded) {
+                root._loginSucceeded = true
+                root.loginSucceeded(root.providerId)
+            }
             root._autoPhase = 2
             webView.url = root.quotaUrl
             return
@@ -122,12 +133,20 @@ Item {
 
         if (root._autoPhase === 1) {
             if (root._isOnQuotaPage(webView.url)) {
+                if (!root._loginSucceeded) {
+                    root._loginSucceeded = true
+                    root.loginSucceeded(root.providerId)
+                }
                 root._autoPhase = 2
                 root._runExtraction()
                 return
             }
 
             if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
+                if (!root._loginSucceeded) {
+                    root._loginSucceeded = true
+                    root.loginSucceeded(root.providerId)
+                }
                 root._autoPhase = 2
                 webView.url = root.quotaUrl
                 return
@@ -151,11 +170,21 @@ Item {
 
         webView.runJavaScript(root.extractorScript, function(result) {
             if (!result || typeof result !== "object") {
+                if (root._autoMode && !root._loginSucceeded) {
+                    root._loginSucceeded = true
+                    root.loginSucceeded(root.providerId)
+                }
                 root.extractionFailed(qsTr("Quota could not be read from this page."))
                 root._wasAutoMode = root._autoMode
                 root._autoMode = false
                 return
             }
+
+            if (root._autoMode && !root._loginSucceeded) {
+                root._loginSucceeded = true
+                root.loginSucceeded(root.providerId)
+            }
+
             var hasRatio = (typeof result.remainingRatio === "number" && result.remainingRatio >= 0)
                          || (typeof result.fiveHourRemainingRatio === "number" && result.fiveHourRemainingRatio >= 0)
             var hasText = (typeof result.balanceText === "string" && result.balanceText.length > 0)
@@ -184,6 +213,10 @@ Item {
                 loginCheckTimer.start()
             } else {
                 if (root.isAllowedOrigin(webView.url)) {
+                    if (!root._loginSucceeded) {
+                        root._loginSucceeded = true
+                        root.loginSucceeded(root.providerId)
+                    }
                     webView.runJavaScript(root.extractorScript, function(result) {
                         if (!root._autoMode || root._autoPhase !== 1) return
                         if (result && typeof result === "object" && result.status === "ok") {
@@ -205,9 +238,21 @@ Item {
         }
     }
 
+    onProviderIdChanged: {
+        if (root.providerId.length > 0 && !webProfileConfigured) {
+            webProfile.storageName = "coding-plan-" + root.providerId
+            webProfile.offTheRecord = false
+            webProfile.persistentCookiesPolicy = WebEngineProfile.ForcePersistentCookies
+            webProfileConfigured = true
+            webView.profile = webProfile
+            webView.url = root.loginUrl
+        }
+    }
+
+    property bool webProfileConfigured: false
+
     WebEngineProfile {
         id: webProfile
-        storageName: "coding-plan-" + root.providerId
         offTheRecord: false
         persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
     }
@@ -259,8 +304,6 @@ Item {
             id: webView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            profile: webProfile
-            url: root.loginUrl
 
             onLoadingChanged: {
                 if (loadRequest.status === WebEngineView.LoadSucceededStatus) {

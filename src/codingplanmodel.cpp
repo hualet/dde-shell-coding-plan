@@ -5,6 +5,7 @@
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -37,6 +38,10 @@ statusFromString (const QString &status)
     {
       return SnapshotStatus::AuthError;
     }
+  if (status == QStringLiteral ("authenticated"))
+    {
+      return SnapshotStatus::Authenticated;
+    }
   if (status == QStringLiteral ("rate_limited"))
     {
       return SnapshotStatus::RateLimited;
@@ -62,6 +67,13 @@ CodingPlanModel::CodingPlanModel (QObject *parent)
   connect (&m_refreshTimer, &QTimer::timeout, this,
            &CodingPlanModel::refreshAll);
   m_refreshTimer.start ();
+
+  m_debounceTimer.setInterval (500);
+  m_debounceTimer.setSingleShot (true);
+  connect (&m_debounceTimer, &QTimer::timeout, this, [this]() {
+    loadSnapshots ();
+    emit snapshotsChanged ();
+  });
 }
 
 QVariantList
@@ -239,8 +251,33 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
 }
 
 void
+CodingPlanModel::setProviderAuthenticated (const QString &providerId)
+{
+  const int index = snapshotIndex (providerId);
+  if (index < 0)
+    {
+      return;
+    }
+
+  QuotaSnapshot snapshot = m_snapshots.at (index);
+  if (snapshot.status == SnapshotStatus::Ok
+      || snapshot.status == SnapshotStatus::Warning
+      || snapshot.status == SnapshotStatus::Exhausted)
+    {
+      return;
+    }
+
+  snapshot.status = SnapshotStatus::Authenticated;
+  snapshot.message = QStringLiteral ("已登录，等待读取额度");
+  snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
+  m_snapshots[index] = snapshot;
+  saveSnapshots ();
+  emit snapshotsChanged ();
+}
+
+void
 CodingPlanModel::setProviderError (const QString &providerId,
-                                   const QString &message)
+                                    const QString &message)
 {
   const int index = snapshotIndex (providerId);
   if (index < 0)
@@ -344,4 +381,42 @@ CodingPlanModel::snapshotIndex (const QString &providerId) const
     }
 
   return -1;
+}
+
+void
+CodingPlanModel::watchExternalChanges ()
+{
+  if (m_settingsWatcher)
+    {
+      return;
+    }
+
+  const QSettings settings (QString::fromLatin1 (kSettingsOrganization),
+                            QString::fromLatin1 (kSettingsApplication));
+  const QString filePath = settings.fileName ();
+
+  m_settingsWatcher = new QFileSystemWatcher (this);
+  m_settingsWatcher->addPath (filePath);
+
+  const QFileInfo fi (filePath);
+  const QString dirPath = fi.absolutePath ();
+  m_settingsWatcher->addPath (dirPath);
+
+  connect (m_settingsWatcher, &QFileSystemWatcher::fileChanged, this,
+           [this, filePath]() {
+             if (!m_settingsWatcher->files ().contains (filePath))
+               {
+                 m_settingsWatcher->addPath (filePath);
+               }
+             m_debounceTimer.start ();
+           });
+
+  connect (m_settingsWatcher, &QFileSystemWatcher::directoryChanged, this,
+           [this, filePath]() {
+             if (!m_settingsWatcher->files ().contains (filePath))
+               {
+                 m_settingsWatcher->addPath (filePath);
+               }
+             m_debounceTimer.start ();
+           });
 }

@@ -23,6 +23,7 @@ bool
 CodingPlanApplet::init ()
 {
   m_quotaModel = new CodingPlanModel (this);
+  m_quotaModel->watchExternalChanges ();
   return DApplet::init ();
 }
 

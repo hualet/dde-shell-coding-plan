@@ -24,6 +24,7 @@ enum class SnapshotStatus
   Warning,
   Exhausted,
   AuthError,
+  Authenticated,
   RateLimited,
   Unsupported,
   ParseError,

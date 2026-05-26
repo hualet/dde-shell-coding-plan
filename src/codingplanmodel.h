@@ -6,6 +6,7 @@
 #include "providerregistry.h"
 
 #include <QObject>
+#include <QFileSystemWatcher>
 #include <QTimer>
 #include <QVariantList>
 
@@ -32,9 +33,12 @@ public:
   Q_INVOKABLE void clearSession (const QString &providerId);
   Q_INVOKABLE void setManualRatio (const QString &providerId, double ratio);
   Q_INVOKABLE void setWebViewResult (const QString &providerId,
-                                      const QVariantMap &result);
+                                       const QVariantMap &result);
   Q_INVOKABLE void setProviderError (const QString &providerId,
-                                     const QString &message);
+                                      const QString &message);
+  Q_INVOKABLE void setProviderAuthenticated (const QString &providerId);
+
+  void watchExternalChanges ();
 
 signals:
   void snapshotsChanged ();
@@ -49,4 +53,6 @@ private:
   ProviderRegistry m_registry;
   QList<QuotaSnapshot> m_snapshots;
   QTimer m_refreshTimer;
+  QFileSystemWatcher *m_settingsWatcher = nullptr;
+  QTimer m_debounceTimer;
 };

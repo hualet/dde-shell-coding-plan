@@ -32,9 +32,13 @@ public:
         resize(420, 720);
         setMinimumSize(360, 600);
 
+        m_profile = new QWebEngineProfile(QStringLiteral("coding-plan-standalone"), this);
+        m_profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
         m_webView = new QWebEngineView(this);
         setCentralWidget(m_webView);
 
+        m_webView->page()->setProfile(m_profile);
         m_webView->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
         m_webView->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
 
@@ -165,6 +169,7 @@ private:
     }
 
     QWebEngineView *m_webView = nullptr;
+    QWebEngineProfile *m_profile = nullptr;
     QWebChannel *m_channel = nullptr;
     WebBridge *m_bridge = nullptr;
     QString m_reactUrl;
