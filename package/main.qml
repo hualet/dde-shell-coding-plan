@@ -410,6 +410,9 @@ AppletItem {
                         })
                         item.extracted.connect(function(result) {
                             Applet.quota.setWebViewResult(root.selectedProvider.providerId, result)
+                            if (item._wasAutoMode) {
+                                autoCloseTimer.start()
+                            }
                         })
                         item.extractionFailed.connect(function(message) {
                             Applet.quota.setProviderError(root.selectedProvider.providerId, message)
@@ -420,6 +423,15 @@ AppletItem {
                     }
                 }
             }
+        }
+    }
+
+    Timer {
+        id: autoCloseTimer
+        interval: 800
+        repeat: false
+        onTriggered: {
+            webPopup.popupVisible = false
         }
     }
 }
