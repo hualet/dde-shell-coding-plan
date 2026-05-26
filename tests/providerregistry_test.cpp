@@ -25,6 +25,7 @@ private slots:
   void kimiCodeExtractorOmitsFieldsOnNull ();
   void fiveHourMissingFieldStaysNegativeOne ();
   void fiveHourQuotaPercentFallsBackToText ();
+  void webViewAcceptsTextOnlyResult ();
 };
 
 void
@@ -340,6 +341,27 @@ ProviderRegistryTest::fiveHourQuotaPercentFallsBackToText ()
   QVERIFY (fnBody.contains (QStringLiteral ("fiveHourBalanceText")));
 
   QVERIFY (!fnBody.contains (QStringLiteral ("Math.max(0, Math.min(1, snapshot.fiveHourRemainingRatio")));
+}
+
+void
+ProviderRegistryTest::webViewAcceptsTextOnlyResult ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (!qml.contains (QStringLiteral (
+      "result.remainingRatio >= 0 || result.fiveHourRemainingRatio >= 0")));
+
+  QVERIFY (qml.contains (QStringLiteral ("var hasRatio")));
+  QVERIFY (qml.contains (QStringLiteral ("var hasText")));
+  QVERIFY (qml.contains (QStringLiteral ("balanceText")));
+  QVERIFY (qml.contains (QStringLiteral ("fiveHourBalanceText")));
+  QVERIFY (qml.contains (QStringLiteral ("hasRatio || hasText")));
+
+  QVERIFY (qml.contains (QStringLiteral ("typeof result.remainingRatio")));
+  QVERIFY (qml.contains (QStringLiteral ("typeof result.balanceText")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
