@@ -61,6 +61,11 @@ void WebBridge::setManualRatio(const QString &providerId, double ratio)
     m_model->setManualRatio(providerId, ratio);
 }
 
+void WebBridge::setWebViewResult(const QString &providerId, const QVariantMap &result)
+{
+    m_model->setWebViewResult(providerId, result);
+}
+
 QVariantMap WebBridge::getProviderConfig(const QString &providerId) const
 {
     QVariantList provs = m_model->providers();

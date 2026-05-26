@@ -410,11 +410,13 @@ AppletItem {
                         })
                         item.extracted.connect(function(result) {
                             Applet.quota.setWebViewResult(root.selectedProvider.providerId, result)
-                            webPopup.popupVisible = false
                         })
                         item.extractionFailed.connect(function(message) {
                             Applet.quota.setProviderError(root.selectedProvider.providerId, message)
                         })
+                        if (root.selectedProvider.providerId) {
+                            item.startAutoExtract()
+                        }
                     }
                 }
             }

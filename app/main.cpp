@@ -16,6 +16,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QStringList>
+#include <QTimer>
 
 DWIDGET_USE_NAMESPACE
 
@@ -99,27 +100,55 @@ private slots:
             return;
         }
 
+        const QString currentPath = m_webView->url().path();
+        const QString loginPath = m_loginProviderConfig.value(QStringLiteral("loginUrl")).toString();
+        const QString quotaUrl = m_loginProviderConfig.value(QStringLiteral("quotaUrl")).toString();
+        const QString consoleUrl = m_loginProviderConfig.value(QStringLiteral("consoleUrl")).toString();
+
+        const bool onLoginPage = (currentPath.indexOf(QStringLiteral("/login")) >= 0 ||
+                                   currentPath == QUrl(loginPath).path());
+
+        if (onLoginPage && m_loginPhase == 0) {
+            m_loginPhase = 1;
+            return;
+        }
+
+        if (m_loginPhase == 0) {
+            m_loginPhase = 1;
+        }
+
+        const bool onQuotaPage = !quotaUrl.isEmpty() &&
+            (m_webView->url().toString().indexOf(QUrl(quotaUrl).path()) >= 0 ||
+             m_webView->url().toString().indexOf(QUrl(consoleUrl).path()) >= 0);
+
+        if (m_loginPhase == 1 && !onQuotaPage) {
+            m_loginPhase = 2;
+            if (!quotaUrl.isEmpty()) {
+                m_webView->setUrl(QUrl(quotaUrl));
+            }
+            return;
+        }
+
         const QString extractorScript = m_loginProviderConfig.value(QStringLiteral("extractorScript")).toString();
         if (extractorScript.trimmed().isEmpty()) {
             return;
         }
 
-        m_webView->page()->runJavaScript(extractorScript, [this](const QVariant &result) {
-            const QVariantMap data = result.toMap();
-            if (data.value(QStringLiteral("status")).toString() != QStringLiteral("ok")) {
-                return;
-            }
+        QTimer::singleShot(1500, this, [this, extractorScript]() {
+            m_webView->page()->runJavaScript(extractorScript, [this](const QVariant &result) {
+                const QVariantMap data = result.toMap();
+                const QString providerId = m_loginProviderId;
 
-            const double remainingRatio = data.value(QStringLiteral("remainingRatio"), -1.0).toDouble();
-            if (remainingRatio < 0) {
-                return;
-            }
-
-            const QString providerId = m_loginProviderId;
-            m_bridge->setManualRatio(providerId, remainingRatio);
-            m_loginProviderId.clear();
-            m_loginProviderConfig.clear();
-            onLoginFinished(providerId);
+                if (data.value(QStringLiteral("status")).toString() == QStringLiteral("ok")) {
+                    m_bridge->setWebViewResult(providerId, data);
+                    m_loginProviderId.clear();
+                    m_loginProviderConfig.clear();
+                    m_loginPhase = 0;
+                    onLoginFinished(providerId);
+                } else {
+                    m_loginPhase = 0;
+                }
+            });
         });
     }
 
@@ -137,6 +166,7 @@ private:
     QString m_reactUrl;
     QString m_loginProviderId;
     QVariantMap m_loginProviderConfig;
+    int m_loginPhase = 0;
 };
 
 int main(int argc, char *argv[])

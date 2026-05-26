@@ -16,6 +16,9 @@ Item {
     property var allowedOrigins: []
     property string extractorScript
 
+    property bool _autoMode: false
+    property int _autoPhase: 0
+
     signal closeRequested()
     signal extracted(var result)
     signal extractionFailed(string message)
@@ -29,6 +32,46 @@ Item {
                 return true
         }
         return false
+    }
+
+    function startAutoExtract() {
+        root._autoMode = true
+        root._autoPhase = 1
+        webView.url = root.loginUrl
+    }
+
+    function _onNavigationFinished(ok) {
+        if (!ok || !root._autoMode) return
+        const currentUrl = webView.url.toString()
+
+        if (root._autoPhase === 1) {
+            if (root.isAllowedOrigin(webView.url) && currentUrl.indexOf("/login") === -1) {
+                root._autoPhase = 2
+                webView.url = root.quotaUrl
+            }
+        } else if (root._autoPhase === 2) {
+            if (root.isAllowedOrigin(webView.url)) {
+                root._autoPhase = 3
+                _runExtraction()
+            }
+        }
+    }
+
+    function _runExtraction() {
+        if (!root.isAllowedOrigin(webView.url)) {
+            root.extractionFailed(qsTr("This provider only allows quota reading on declared official domains."))
+            root._autoMode = false
+            return
+        }
+
+        webView.runJavaScript(root.extractorScript, function(result) {
+            if (result && result.status === "ok" && (result.remainingRatio >= 0 || result.fiveHourRemainingRatio >= 0)) {
+                root.extracted(result)
+            } else {
+                root.extractionFailed(result && result.message ? result.message : qsTr("Quota could not be read from this page."))
+            }
+            root._autoMode = false
+        })
     }
 
     WebEngineProfile {
@@ -64,19 +107,14 @@ Item {
             Button {
                 text: qsTr("Read")
                 onClicked: {
-                    if (!root.isAllowedOrigin(webView.url)) {
-                        root.extractionFailed(qsTr("This provider only allows quota reading on declared official domains."))
-                        return
-                    }
-
-                    webView.runJavaScript(root.extractorScript, function(result) {
-                        if (result && result.status === "ok" && result.remainingRatio >= 0) {
-                            root.extracted(result)
-                        } else {
-                            root.extractionFailed(result && result.message ? result.message : qsTr("Quota could not be read from this page."))
-                        }
-                    })
+                    root._autoMode = false
+                    root._runExtraction()
                 }
+            }
+
+            Button {
+                text: qsTr("Auto Refresh")
+                onClicked: root.startAutoExtract()
             }
 
             Button {
@@ -91,6 +129,14 @@ Item {
             Layout.fillHeight: true
             profile: webProfile
             url: root.loginUrl
+
+            onLoadingChanged: {
+                if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                    root._onNavigationFinished(true)
+                } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
+                    root._onNavigationFinished(false)
+                }
+            }
         }
     }
 }
