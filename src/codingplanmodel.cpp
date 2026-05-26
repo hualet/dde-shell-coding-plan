@@ -5,6 +5,7 @@
 
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonDocument>
