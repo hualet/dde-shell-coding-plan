@@ -18,6 +18,8 @@ Item {
 
     property bool _autoMode: false
     property int _autoPhase: 0
+    property string _preLoginUrl: ""
+    property bool _wasAutoMode: false
 
     signal closeRequested()
     signal extracted(var result)
@@ -47,6 +49,20 @@ Item {
         return url.substring(0, end)
     }
 
+    function _urlPath(url) {
+        var str = url.toString()
+        var schemeEnd = str.indexOf("://")
+        if (schemeEnd < 0) return str
+        var pathStart = str.indexOf("/", schemeEnd + 3)
+        if (pathStart < 0) return "/"
+        var end = str.length
+        var q = str.indexOf("?", pathStart)
+        var h = str.indexOf("#", pathStart)
+        if (q >= 0) end = Math.min(end, q)
+        if (h >= 0) end = Math.min(end, h)
+        return str.substring(pathStart, end)
+    }
+
     function _isOnLoginPage(url) {
         var urlStr = url.toString()
         if (urlStr.indexOf("/login") >= 0)
@@ -56,20 +72,68 @@ Item {
         return currentBase === loginBase
     }
 
+    function _isOnQuotaPage(url) {
+        var urlStr = url.toString()
+        var quotaBase = root._urlBasePath(root.quotaUrl.toString())
+        var currentBase = root._urlBasePath(urlStr)
+        if (currentBase === quotaBase) {
+            var loginPath = root._urlPath(root.loginUrl.toString())
+            var quotaPath = root._urlPath(root.quotaUrl.toString())
+            if (loginPath !== quotaPath) {
+                var currentPath = root._urlPath(urlStr)
+                if (currentPath === quotaPath)
+                    return true
+                return false
+            }
+            return true
+        }
+        return false
+    }
+
     function startAutoExtract() {
         root._autoMode = true
         root._autoPhase = 1
+        root._preLoginUrl = webView.url.toString()
         webView.url = root.loginUrl
+    }
+
+    function _checkLoginSuccess() {
+        webView.runJavaScript("(function(){ return document.cookie.length > 0 ? document.cookie : ''; })()", function(cookies) {
+            if (!root._autoMode || root._autoPhase !== 1) return
+
+            if (root._isOnQuotaPage(webView.url)) {
+                root._autoPhase = 2
+                root._runExtraction()
+                return
+            }
+
+            if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
+                root._autoPhase = 2
+                webView.url = root.quotaUrl
+                return
+            }
+
+            loginCheckTimer.start()
+        })
     }
 
     function _onNavigationFinished(ok) {
         if (!ok || !root._autoMode) return
 
         if (root._autoPhase === 1) {
-            if (root.isAllowedOrigin(webView.url) && !root._isOnLoginPage(webView.url)) {
+            if (root._isOnQuotaPage(webView.url)) {
+                root._autoPhase = 2
+                root._runExtraction()
+                return
+            }
+
+            if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
                 root._autoPhase = 2
                 webView.url = root.quotaUrl
+                return
             }
+
+            loginCheckTimer.start()
         } else if (root._autoPhase === 2) {
             if (root.isAllowedOrigin(webView.url)) {
                 root._autoPhase = 3
@@ -88,6 +152,7 @@ Item {
         webView.runJavaScript(root.extractorScript, function(result) {
             if (!result || typeof result !== "object") {
                 root.extractionFailed(qsTr("Quota could not be read from this page."))
+                root._wasAutoMode = root._autoMode
                 root._autoMode = false
                 return
             }
@@ -95,6 +160,7 @@ Item {
                          || (typeof result.fiveHourRemainingRatio === "number" && result.fiveHourRemainingRatio >= 0)
             var hasText = (typeof result.balanceText === "string" && result.balanceText.length > 0)
                        || (typeof result.fiveHourBalanceText === "string" && result.fiveHourBalanceText.length > 0)
+            root._wasAutoMode = root._autoMode
             if (result.status === "ok" && (hasRatio || hasText)) {
                 root.extracted(result)
             } else {
@@ -102,6 +168,39 @@ Item {
             }
             root._autoMode = false
         })
+    }
+
+    Timer {
+        id: loginCheckTimer
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            if (!root._autoMode || root._autoPhase !== 1) return
+
+            if (root._isOnQuotaPage(webView.url)) {
+                root._autoPhase = 2
+                root._runExtraction()
+                return
+            }
+
+            if (!root._isOnLoginPage(webView.url) && root.isAllowedOrigin(webView.url)) {
+                root._autoPhase = 2
+                webView.url = root.quotaUrl
+                return
+            }
+
+            webView.runJavaScript("(function(){ try { var el = document.querySelector('#app'); if (el && el.innerText && el.innerText.length > 50) return true; } catch(e){} return false; })()", function(hasContent) {
+                if (!root._autoMode || root._autoPhase !== 1) return
+
+                if (hasContent === true) {
+                    root._autoPhase = 2
+                    webView.url = root.quotaUrl
+                    return
+                }
+
+                loginCheckTimer.start()
+            })
+        }
     }
 
     WebEngineProfile {
