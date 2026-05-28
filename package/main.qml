@@ -294,6 +294,14 @@ AppletItem {
                                 anchors.margins: 9
                                 spacing: 7
 
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.providerName
+                                    font.pixelSize: 14
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+
                                 Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 28
