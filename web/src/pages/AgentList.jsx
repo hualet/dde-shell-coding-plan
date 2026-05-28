@@ -7,7 +7,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { fetchProviders, fetchSnapshots, isLoggedIn, refreshAll, openConsole } from '../bridge';
+import { fetchProviders, fetchSnapshots, isLoggedIn, refreshAll, openConsole, onDataChanged } from '../bridge';
 
 const severityColor = {
   normal: 'success',
@@ -120,6 +120,12 @@ export default function AgentList() {
 
   useEffect(() => {
     loadData();
+    const unsub = onDataChanged(() => {
+      loadData();
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
   }, []);
 
   const handleRefreshAll = async () => {

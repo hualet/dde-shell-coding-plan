@@ -150,6 +150,18 @@ CodingPlanModel::refreshProvider (const QString &providerId)
 
   const ProviderDefinition provider = m_registry.provider (providerId);
   QuotaSnapshot snapshot = m_snapshots.at (index);
+
+  if (snapshot.status == SnapshotStatus::Ok
+      || snapshot.status == SnapshotStatus::Warning
+      || snapshot.status == SnapshotStatus::Exhausted)
+    {
+      snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
+      m_snapshots[index] = snapshot;
+      saveSnapshots ();
+      emit snapshotsChanged ();
+      return;
+    }
+
   snapshot.status = SnapshotStatus::AuthError;
   snapshot.message = QStringLiteral ("请先在内置 WebView 中登录官方页面，然后刷新读取额度。");
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
@@ -317,11 +329,14 @@ CodingPlanModel::createInitialSnapshot (const ProviderDefinition &provider) cons
 void
 CodingPlanModel::loadSnapshots ()
 {
+  m_snapshots.clear ();
+
   QSettings settings (QString::fromLatin1 (kSettingsOrganization),
                       QString::fromLatin1 (kSettingsApplication));
-  const QJsonDocument document = QJsonDocument::fromJson (
-      settings.value (QString::fromLatin1 (kSnapshotsKey)).toByteArray ());
+  const QByteArray raw = settings.value (QString::fromLatin1 (kSnapshotsKey)).toByteArray ();
+  qDebug () << "CodingPlanModel::loadSnapshots raw size:" << raw.size ();
 
+  const QJsonDocument document = QJsonDocument::fromJson (raw);
   const QJsonArray storedSnapshots = document.array ();
   for (const ProviderDefinition &provider : m_registry.providers ())
     {
@@ -345,6 +360,9 @@ CodingPlanModel::loadSnapshots ()
           break;
         }
       m_snapshots.append (snapshot);
+      qDebug () << "CodingPlanModel::loadSnapshots loaded" << provider.id
+                << "status:" << snapshotStatusToString (snapshot.status)
+                << "ratio:" << snapshot.remainingRatio;
     }
 }
 
@@ -354,6 +372,9 @@ CodingPlanModel::saveSnapshots () const
   QJsonArray array;
   for (const QuotaSnapshot &snapshot : m_snapshots)
     {
+      qDebug () << "CodingPlanModel::saveSnapshots saving" << snapshot.providerId
+                << "status:" << snapshotStatusToString (snapshot.status)
+                << "ratio:" << snapshot.remainingRatio;
       QJsonObject object;
       object.insert (QStringLiteral ("providerId"), snapshot.providerId);
       object.insert (QStringLiteral ("status"), snapshotStatusToString (snapshot.status));

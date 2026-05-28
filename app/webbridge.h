@@ -27,6 +27,7 @@ public:
     Q_INVOKABLE void finishLogin(const QString &providerId);
     Q_INVOKABLE void setManualRatio(const QString &providerId, double ratio);
     Q_INVOKABLE void setWebViewResult(const QString &providerId, const QVariantMap &result);
+    Q_INVOKABLE void setProviderError(const QString &providerId, const QString &message);
     Q_INVOKABLE QVariantMap getProviderConfig(const QString &providerId) const;
 
 signals:

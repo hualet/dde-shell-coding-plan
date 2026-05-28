@@ -85,6 +85,8 @@ private slots:
     {
         m_loginProviderId = providerId;
         m_loginProviderConfig = m_bridge->getProviderConfig(providerId);
+        m_loginPhase = 0;
+        m_loginQuotaProbeStarted = false;
         m_webView->setUrl(QUrl(loginUrl));
     }
 
@@ -116,6 +118,14 @@ private slots:
 
         if (onLoginPage && m_loginPhase == 0) {
             m_loginPhase = 1;
+            if (!quotaUrl.isEmpty() && !m_loginQuotaProbeStarted) {
+                m_loginQuotaProbeStarted = true;
+                QTimer::singleShot(1200, this, [this, quotaUrl]() {
+                    if (!m_loginProviderId.isEmpty() && m_loginPhase == 1) {
+                        m_webView->setUrl(QUrl(quotaUrl));
+                    }
+                });
+            }
             return;
         }
 
@@ -127,9 +137,18 @@ private slots:
             m_loginPhase = 1;
         }
 
+        auto pathMatch = [](const QString &urlStr, const QString &urlToMatch) -> bool {
+            if (urlToMatch.isEmpty())
+                return false;
+            const QString path = QUrl(urlToMatch).path();
+            if (path.isEmpty() || path == QStringLiteral("/"))
+                return urlStr.indexOf(QUrl(urlToMatch).host()) >= 0;
+            return urlStr.indexOf(path) >= 0;
+        };
+
         const bool onQuotaPage = !quotaUrl.isEmpty() &&
-            (m_webView->url().toString().indexOf(QUrl(quotaUrl).path()) >= 0 ||
-             m_webView->url().toString().indexOf(QUrl(consoleUrl).path()) >= 0);
+            (pathMatch(m_webView->url().toString(), quotaUrl) ||
+             pathMatch(m_webView->url().toString(), consoleUrl));
 
         if (m_loginPhase == 1 && !onQuotaPage) {
             m_loginPhase = 2;
@@ -151,13 +170,16 @@ private slots:
 
                 if (data.value(QStringLiteral("status")).toString() == QStringLiteral("ok")) {
                     m_bridge->setWebViewResult(providerId, data);
-                    m_loginProviderId.clear();
-                    m_loginProviderConfig.clear();
-                    m_loginPhase = 0;
-                    onLoginFinished(providerId);
                 } else {
-                    m_loginPhase = 0;
+                    m_bridge->setProviderError(providerId,
+                                               data.value(QStringLiteral("message")).toString());
                 }
+
+                m_loginProviderId.clear();
+                m_loginProviderConfig.clear();
+                m_loginPhase = 0;
+                m_loginQuotaProbeStarted = false;
+                onLoginFinished(providerId);
             });
         });
     }
@@ -178,13 +200,14 @@ private:
     QString m_loginProviderId;
     QVariantMap m_loginProviderConfig;
     int m_loginPhase = 0;
+    bool m_loginQuotaProbeStarted = false;
 };
 
 int main(int argc, char *argv[])
 {
     DApplication a(argc, argv);
     a.setOrganizationName(QStringLiteral("deepin"));
-    a.setApplicationName(QStringLiteral("dde-coding-plan"));
+    a.setApplicationName(QStringLiteral("dde-shell-coding-plan"));
     a.setApplicationVersion(QStringLiteral("0.2.0"));
     a.setProductName(QObject::tr("Coding Plan"));
     a.setProductIcon(QIcon::fromTheme(QStringLiteral("preferences-system")));

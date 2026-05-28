@@ -427,6 +427,9 @@ AppletItem {
                         })
                         item.extractionFailed.connect(function(message) {
                             Applet.quota.setProviderError(root.selectedProvider.providerId, message)
+                            if (item._wasAutoMode) {
+                                autoCloseTimer.start()
+                            }
                         })
                         item.loginSucceeded.connect(function(providerId) {
                             Applet.quota.setProviderAuthenticated(providerId)
