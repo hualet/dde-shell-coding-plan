@@ -21,6 +21,8 @@ Item {
     property string _preLoginUrl: ""
     property bool _wasAutoMode: false
     property bool _loginSucceeded: false
+    property int _extractionAttempts: 0
+    property int _maxExtractionAttempts: 6
 
     signal closeRequested()
     signal extracted(var result)
@@ -96,6 +98,7 @@ Item {
         if (!root.webProfileConfigured) return
         root._autoMode = true
         root._autoPhase = 1
+        root._extractionAttempts = 0
         root._preLoginUrl = webView.url.toString()
         webView.url = root.loginUrl
     }
@@ -163,20 +166,25 @@ Item {
 
     function _runExtraction() {
         if (!root.isAllowedOrigin(webView.url)) {
+            console.warn("[coding-plan][webview]", root.providerId, "blocked origin", webView.url)
             root.extractionFailed(qsTr("This provider only allows quota reading on declared official domains."))
             root._autoMode = false
             return
         }
 
+        root._extractionAttempts += 1
+        console.warn("[coding-plan][webview]", root.providerId,
+                    "extract attempt", root._extractionAttempts,
+                    "url", webView.url)
         webView.runJavaScript(root.extractorScript, function(result) {
             if (!result || typeof result !== "object") {
+                console.warn("[coding-plan][webview]", root.providerId,
+                            "extract null-result", "attempt", root._extractionAttempts)
                 if (root._autoMode && !root._loginSucceeded) {
                     root._loginSucceeded = true
                     root.loginSucceeded(root.providerId)
                 }
-                root.extractionFailed(qsTr("Quota could not be read from this page."))
-                root._wasAutoMode = root._autoMode
-                root._autoMode = false
+                root._scheduleExtractionRetry(qsTr("Quota could not be read from this page."))
                 return
             }
 
@@ -189,14 +197,56 @@ Item {
                          || (typeof result.fiveHourRemainingRatio === "number" && result.fiveHourRemainingRatio >= 0)
             var hasText = (typeof result.balanceText === "string" && result.balanceText.length > 0)
                        || (typeof result.fiveHourBalanceText === "string" && result.fiveHourBalanceText.length > 0)
+            console.warn("[coding-plan][webview]", root.providerId,
+                        "extract result", "attempt", root._extractionAttempts,
+                        "status", result.status,
+                        "remaining", result.remainingRatio,
+                        "fiveHour", result.fiveHourRemainingRatio,
+                        "balanceText", result.balanceText || "",
+                        "fiveHourText", result.fiveHourBalanceText || "",
+                        "message", result.message || "")
             root._wasAutoMode = root._autoMode
             if (result.status === "ok" && (hasRatio || hasText)) {
+                root._extractionAttempts = 0
                 root.extracted(result)
+                root._autoMode = false
             } else {
-                root.extractionFailed(result.message ? result.message : qsTr("Quota could not be read from this page."))
+                root._scheduleExtractionRetry(result.message ? result.message : qsTr("Quota could not be read from this page."))
             }
-            root._autoMode = false
         })
+    }
+
+    function _scheduleExtractionRetry(message) {
+        if (root._extractionAttempts < root._maxExtractionAttempts) {
+            console.warn("[coding-plan][webview]", root.providerId,
+                        "retry scheduled", root._extractionAttempts,
+                        "message", message)
+            extractionRetryTimer._lastMessage = message
+            extractionRetryTimer.restart()
+            return
+        }
+
+        root._finishExtractionFailure(message)
+    }
+
+    function _finishExtractionFailure(message) {
+        console.warn("[coding-plan][webview]", root.providerId,
+                    "extract failed", "attempts", root._extractionAttempts,
+                    "message", message)
+        root.extractionFailed(message)
+        root._wasAutoMode = root._autoMode
+        root._autoMode = false
+        root._extractionAttempts = 0
+    }
+
+    function _isExpectedConsoleNoise(message) {
+        return message.indexOf("DialogContent` requires a `DialogTitle") >= 0
+            || message.indexOf("Unrecognized feature: 'ch-ua-form-factors'") >= 0
+            || message.indexOf("Found a 'popover' attribute with an invalid value") >= 0
+            || message.indexOf("RequestError: Failed to fetch") >= 0
+            || message.indexOf("Failed to fetch") >= 0
+            || (message.indexOf("DOMException") >= 0 && message.indexOf("[object Object]") >= 0)
+            || message.indexOf("RecoverableError: Minified React error #418") >= 0
     }
 
     Timer {
@@ -236,6 +286,14 @@ Item {
                 }
             }
         }
+    }
+
+    Timer {
+        id: extractionRetryTimer
+        interval: 1200
+        repeat: false
+        property string _lastMessage: ""
+        onTriggered: root._runExtraction()
     }
 
     onProviderIdChanged: {
@@ -285,6 +343,7 @@ Item {
                 text: qsTr("Read")
                 onClicked: {
                     root._autoMode = false
+                    root._extractionAttempts = 0
                     root._runExtraction()
                 }
             }
@@ -311,6 +370,12 @@ Item {
                 } else if (loadRequest.status === WebEngineView.LoadFailedStatus) {
                     root._onNavigationFinished(false)
                 }
+            }
+
+            onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+                if (root._isExpectedConsoleNoise(message))
+                    return
+                console.warn("js:", message)
             }
         }
     }

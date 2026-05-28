@@ -24,11 +24,18 @@ QVariantList WebBridge::snapshots() const
 
 void WebBridge::refreshAll()
 {
-    m_model->refreshAll();
+    emit refreshAllRequested();
 }
 
 void WebBridge::refreshProvider(const QString &providerId)
 {
+    QVariantMap provider = getProviderConfig(providerId);
+    const QString quotaUrl = provider.value(QStringLiteral("quotaUrl")).toString();
+    if (!quotaUrl.isEmpty()) {
+        emit loginPageRequested(providerId, quotaUrl);
+        return;
+    }
+
     m_model->refreshProvider(providerId);
 }
 

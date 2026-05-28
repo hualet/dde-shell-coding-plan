@@ -9,34 +9,220 @@
 namespace
 {
 QString
-webExtractorScript (const QString &providerId)
+codexExtractorScript ()
 {
-  const QJsonObject metadata{ { QStringLiteral ("provider"), providerId } };
+  const QJsonObject metadata{ { QStringLiteral ("provider"),
+                                QStringLiteral ("codex") } };
   const QString metadataJson = QString::fromUtf8 (
       QJsonDocument (metadata).toJson (QJsonDocument::Compact));
 
   return QStringLiteral (R"JS(
 (function() {
   const metadata = %1;
-  const text = document.body ? document.body.innerText : "";
-  const percentMatch = text.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
-  if (percentMatch) {
-    const remainingRatio = Math.max(0, Math.min(100, Number(percentMatch[1]))) / 100;
+
+  function clampRatio(value) {
+    if (!Number.isFinite(value)) return -1;
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function percentText(ratio) {
+    if (!Number.isFinite(ratio) || ratio < 0) return "";
+    return Math.round(ratio * 100) + "%";
+  }
+
+  function normalizeText(value) {
+    return String(value || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/％/g, "%")
+      .replace(/[ \t]+/g, " ")
+      .trim();
+  }
+
+  function makeQuota(percentValue) {
+    var remainingRatio = clampRatio(Number(percentValue) / 100);
+    return {
+      ratio: remainingRatio,
+      text: percentText(remainingRatio),
+      used: -1,
+      total: -1,
+      resetAt: ""
+    };
+  }
+
+  function readableTextFromNodes() {
+    if (!document.body || !document.createTreeWalker) return "";
+    var walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: function(node) {
+          var parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          var tag = parent.tagName ? parent.tagName.toLowerCase() : "";
+          if (tag === "script" || tag === "style" || tag === "noscript") {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return normalizeText(node.nodeValue).length > 0
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        }
+      }
+    );
+
+    var parts = [];
+    var node = null;
+    while ((node = walker.nextNode()) !== null && parts.length < 600) {
+      parts.push(node.nodeValue);
+    }
+    return parts.join("\n");
+  }
+
+  function pageText() {
+    var inner = document.body ? document.body.innerText : "";
+    var nodes = readableTextFromNodes();
+    return normalizeText(inner + "\n" + nodes);
+  }
+
+  function matchesAny(value, patterns) {
+    for (var index = 0; index < patterns.length; ++index) {
+      if (patterns[index].test(value)) return true;
+    }
+    return false;
+  }
+
+  function quotaFromSection(section) {
+    var percentMatch = normalizeText(section).match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+    if (!percentMatch) return null;
+    return makeQuota(percentMatch[1]);
+  }
+
+  function quotaAfterLabel(text, labelPattern, valueGroupIndex) {
+    var match = labelPattern.exec(text);
+    if (!match) return null;
+
+    if (valueGroupIndex && match[valueGroupIndex]) {
+      return makeQuota(match[valueGroupIndex]);
+    }
+
+    var section = text.slice(match.index, match.index + 180);
+    return quotaFromSection(section);
+  }
+
+  function percentValueFromLine(line) {
+    var normalized = normalizeText(line);
+    var exactMatch = normalized.match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
+    if (!exactMatch) return "";
+
+    var value = Number(exactMatch[1]);
+    if (!Number.isFinite(value) || value < 0 || value > 100) return "";
+    return exactMatch[1];
+  }
+
+  function readTextQuota(patterns, lines) {
+    for (var index = 0; index < lines.length; ++index) {
+      if (!matchesAny(lines[index], patterns)) continue;
+
+      for (var offset = 1; offset <= 6 && index + offset < lines.length; ++offset) {
+        var value = percentValueFromLine(lines[index + offset]);
+        if (value) return makeQuota(value);
+      }
+
+      var section = lines.slice(index, index + 8).join("\n");
+      var quota = quotaFromSection(section);
+      if (quota) return quota;
+    }
+    return null;
+  }
+
+  function readAnalyticsPage() {
+    var text = pageText();
+    var compactText = text.replace(/\s+/g, "");
+    if (text.indexOf("Codex") < 0
+        && location.pathname.indexOf("/codex/cloud/settings/analytics") < 0) {
+      return null;
+    }
+
+    var lines = text.split(/\n+/).map(normalizeText).filter(function(line) {
+      return line.length > 0;
+    });
+
+    var fiveHour = readTextQuota([
+      /5\s*小时.*(使用|限额|限制|额度)/i,
+      /5\s*hour.*(usage|limit)/i,
+      /5-hour.*(usage|limit)/i
+    ], lines);
+    var weekly = readTextQuota([
+      /(每周|周).*(使用|限额|限制|额度)/i,
+      /weekly.*(usage|limit)/i
+    ], lines);
+
+    if (!fiveHour) {
+      fiveHour = quotaAfterLabel(
+        text,
+        /5\s*(?:小时|hour)[\s\S]{0,80}(?:使用|usage|限额|limit|限制|额度)[\s\S]{0,80}?(\d{1,3}(?:\.\d+)?)\s*%/i,
+        1
+      );
+    }
+    if (!weekly) {
+      weekly = quotaAfterLabel(
+        text,
+        /(?:每周|weekly)[\s\S]{0,80}(?:使用|usage|限额|limit|限制|额度)[\s\S]{0,80}?(\d{1,3}(?:\.\d+)?)\s*%/i,
+        1
+      );
+    }
+
+    if (!fiveHour && compactText.indexOf("5小时") >= 0) {
+      fiveHour = quotaFromSection(text.slice(compactText.indexOf("5小时"), compactText.indexOf("5小时") + 240));
+    }
+
+    return {
+      weekly: weekly,
+      fiveHour: fiveHour,
+      debug: {
+        textLength: text.length,
+        matches: "",
+        excerpt: text.split(/\n+/).filter(function(line) {
+          return /Codex|使用|限额|额度|剩余|remaining|usage|limit|%%|%|％/i.test(line);
+        }).slice(0, 16).join(" | ")
+      }
+    };
+  }
+
+  var parsed = readAnalyticsPage();
+  if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
+    var debug = parsed && parsed.debug ? parsed.debug : { textLength: 0, matches: "", excerpt: "" };
     return {
       providerId: metadata.provider,
-      status: "ok",
-      remainingRatio,
-      balanceText: percentMatch[0],
+      status: "parse_error",
+      message: "未在 Codex 分析页面识别到额度信息。URL=" + location.pathname
+        + " textLength=" + debug.textLength
+        + " matches=" + debug.matches
+        + " excerpt=" + debug.excerpt,
       updatedAt: new Date().toISOString()
     };
   }
 
-  return {
+  var result = {
     providerId: metadata.provider,
-    status: "parse_error",
-    message: "未在官方页面中识别到额度百分比，请打开控制台人工确认或手动录入。",
+    status: "ok",
     updatedAt: new Date().toISOString()
   };
+
+  if (parsed.weekly) {
+    result.remainingRatio = parsed.weekly.ratio;
+    result.balanceText = parsed.weekly.text;
+  }
+
+  if (parsed.fiveHour) {
+    result.fiveHourRemainingRatio = parsed.fiveHour.ratio;
+    result.fiveHourBalanceText = parsed.fiveHour.text;
+    if (!parsed.weekly) {
+      result.remainingRatio = parsed.fiveHour.ratio;
+      result.balanceText = parsed.fiveHour.text;
+    }
+  }
+
+  return result;
 })()
 )JS")
       .arg (metadataJson);
@@ -432,12 +618,14 @@ ProviderRegistry::createDefault ()
         QStringLiteral ("Codex / ChatGPT"),
         SourceType::WebView,
         QStringLiteral ("https://chatgpt.com/auth/login"),
-        QStringLiteral ("https://chatgpt.com/#settings/usage"),
-        QStringLiteral ("https://chatgpt.com/#settings/usage"),
+        QStringLiteral (
+            "https://chatgpt.com/codex/cloud/settings/analytics#usage"),
+        QStringLiteral (
+            "https://chatgpt.com/codex/cloud/settings/analytics#usage"),
         { QStringLiteral ("https://chatgpt.com"),
           QStringLiteral ("https://auth.openai.com"),
           QStringLiteral ("https://platform.openai.com") },
-        webExtractorScript (QStringLiteral ("codex")) });
+        codexExtractorScript () });
 
   registry.addProvider (
       { QStringLiteral ("kimi-code"),

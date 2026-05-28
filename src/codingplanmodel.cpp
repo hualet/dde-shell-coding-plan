@@ -223,9 +223,19 @@ void
 CodingPlanModel::setWebViewResult (const QString &providerId,
                                    const QVariantMap &result)
 {
+  qWarning () << "[coding-plan][model] setWebViewResult input" << providerId
+            << "status" << result.value (QStringLiteral ("status")).toString ()
+            << "remaining" << result.value (QStringLiteral ("remainingRatio"))
+            << "fiveHour" << result.value (QStringLiteral ("fiveHourRemainingRatio"))
+            << "balanceText" << result.value (QStringLiteral ("balanceText")).toString ()
+            << "fiveHourText" << result.value (QStringLiteral ("fiveHourBalanceText")).toString ()
+            << "message" << result.value (QStringLiteral ("message")).toString ();
+
   const int index = snapshotIndex (providerId);
   if (index < 0)
     {
+      qWarning () << "[coding-plan][model] setWebViewResult ignored unknown provider"
+                << providerId;
       return;
     }
 
@@ -254,6 +264,12 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
       snapshot.fiveHourRemainingRatio = -1.0;
     }
   snapshot.fiveHourBalanceText = result.value (QStringLiteral ("fiveHourBalanceText")).toString ();
+
+  qWarning () << "[coding-plan][model] setWebViewResult parsed" << providerId
+            << "remaining" << snapshot.remainingRatio
+            << "fiveHour" << snapshot.fiveHourRemainingRatio
+            << "balanceText" << snapshot.balanceText
+            << "fiveHourText" << snapshot.fiveHourBalanceText;
 
   snapshot.status = SnapshotStatus::Ok;
   snapshot.message = QStringLiteral ("WebView 读取");
@@ -292,9 +308,14 @@ void
 CodingPlanModel::setProviderError (const QString &providerId,
                                     const QString &message)
 {
+  qWarning () << "[coding-plan][model] setProviderError" << providerId
+            << "message" << message;
+
   const int index = snapshotIndex (providerId);
   if (index < 0)
     {
+      qWarning () << "[coding-plan][model] setProviderError ignored unknown provider"
+                << providerId;
       return;
     }
 
@@ -303,6 +324,10 @@ CodingPlanModel::setProviderError (const QString &providerId,
     {
       snapshot.status = SnapshotStatus::ParseError;
     }
+  snapshot.remainingRatio = -1.0;
+  snapshot.balanceText.clear ();
+  snapshot.fiveHourRemainingRatio = -1.0;
+  snapshot.fiveHourBalanceText.clear ();
   snapshot.message = message.trimmed ().isEmpty ()
                          ? QStringLiteral ("读取失败，请打开控制台人工确认或手动录入。")
                          : message.trimmed ();

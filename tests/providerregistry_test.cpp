@@ -17,7 +17,15 @@ private slots:
   void panelQmlRightClickOpensSettingsMenu ();
   void appletLaunchesStandaloneSettingsWindow ();
   void standaloneAppSourceFilesExist ();
+  void webViewsSuppressExpectedThirdPartyConsoleNoise ();
+  void standaloneRetriesQuotaExtractionWhilePageHydrates ();
+  void standaloneRefreshTriggersWebViewExtraction ();
+  void webPopupRetriesQuotaExtractionWhilePageHydrates ();
+  void panelRefreshOpensWebViewExtraction ();
   void reactFrontendEntryExists ();
+  void codexProviderUrlsMatchAnalyticsUsage ();
+  void codexExtractorReadsAnalyticsUsageText ();
+  void reactFallbackProvidersMatchBuiltInRegistry ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
   void kimiCodeExtractorReadsBillingUsageApi ();
   void glmCodingProviderUrlsMatchCodingPlanUsage ();
@@ -170,6 +178,107 @@ ProviderRegistryTest::standaloneAppSourceFilesExist ()
 }
 
 void
+ProviderRegistryTest::webViewsSuppressExpectedThirdPartyConsoleNoise ()
+{
+  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
+  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
+
+  QVERIFY (cpp.contains (QStringLiteral ("FilteringWebEnginePage")));
+  QVERIFY (cpp.contains (QStringLiteral ("javaScriptConsoleMessage")));
+  QVERIFY (cpp.contains (QStringLiteral ("DialogContent` requires a `DialogTitle")));
+  QVERIFY (cpp.contains (QStringLiteral ("Found a 'popover' attribute with an invalid value")));
+  QVERIFY (cpp.contains (QStringLiteral ("RequestError: Failed to fetch")));
+  QVERIFY (cpp.contains (QStringLiteral ("Failed to fetch")));
+  QVERIFY (cpp.contains (QStringLiteral ("DOMException")));
+  QVERIFY (cpp.contains (QStringLiteral ("RecoverableError: Minified React error #418")));
+
+  QFile providerWebView (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QVERIFY2 (providerWebView.open (QIODevice::ReadOnly),
+            qPrintable (providerWebView.errorString ()));
+  const QString qml = QString::fromUtf8 (providerWebView.readAll ());
+
+  QVERIFY (qml.contains (QStringLiteral ("function _isExpectedConsoleNoise")));
+  QVERIFY (qml.contains (QStringLiteral ("onJavaScriptConsoleMessage")));
+  QVERIFY (qml.contains (QStringLiteral ("DialogContent` requires a `DialogTitle")));
+  QVERIFY (qml.contains (QStringLiteral ("RequestError: Failed to fetch")));
+  QVERIFY (qml.contains (QStringLiteral ("Failed to fetch")));
+  QVERIFY (qml.contains (QStringLiteral ("DOMException")));
+  QVERIFY (qml.contains (QStringLiteral ("RecoverableError: Minified React error #418")));
+}
+
+void
+ProviderRegistryTest::standaloneRetriesQuotaExtractionWhilePageHydrates ()
+{
+  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
+
+  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
+
+  QVERIFY (cpp.contains (QStringLiteral ("runExtractorWithRetry")));
+  QVERIFY (cpp.contains (QStringLiteral ("m_extractionAttempts")));
+  QVERIFY (cpp.contains (QStringLiteral ("maxExtractionAttempts")));
+  QVERIFY (cpp.contains (QStringLiteral ("QTimer::singleShot(1200")));
+  QVERIFY (cpp.contains (QStringLiteral ("status")));
+  QVERIFY (cpp.contains (QStringLiteral ("ok")));
+}
+
+void
+ProviderRegistryTest::standaloneRefreshTriggersWebViewExtraction ()
+{
+  QFile bridgeHeader (QStringLiteral (SOURCE_DIR "/app/webbridge.h"));
+  QVERIFY2 (bridgeHeader.open (QIODevice::ReadOnly),
+            qPrintable (bridgeHeader.errorString ()));
+  const QString header = QString::fromUtf8 (bridgeHeader.readAll ());
+  QVERIFY (header.contains (QStringLiteral ("refreshAllRequested")));
+
+  QFile bridgeSource (QStringLiteral (SOURCE_DIR "/app/webbridge.cpp"));
+  QVERIFY2 (bridgeSource.open (QIODevice::ReadOnly),
+            qPrintable (bridgeSource.errorString ()));
+  const QString bridge = QString::fromUtf8 (bridgeSource.readAll ());
+  QVERIFY (bridge.contains (QStringLiteral ("emit refreshAllRequested()")));
+  QVERIFY (bridge.contains (QStringLiteral ("emit loginPageRequested(providerId, quotaUrl)")));
+
+  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
+  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
+  QVERIFY (cpp.contains (QStringLiteral ("onRefreshAllRequested")));
+  QVERIFY (cpp.contains (QStringLiteral ("refreshNextProvider")));
+  QVERIFY (cpp.contains (QStringLiteral ("m_refreshQueue")));
+  QVERIFY (cpp.contains (QStringLiteral ("onLoginPageRequested(providerId, quotaUrl)")));
+}
+
+void
+ProviderRegistryTest::webPopupRetriesQuotaExtractionWhilePageHydrates ()
+{
+  QFile providerWebView (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QVERIFY2 (providerWebView.open (QIODevice::ReadOnly),
+            qPrintable (providerWebView.errorString ()));
+
+  const QString qml = QString::fromUtf8 (providerWebView.readAll ());
+
+  QVERIFY (qml.contains (QStringLiteral ("property int _extractionAttempts")));
+  QVERIFY (qml.contains (QStringLiteral ("property int _maxExtractionAttempts")));
+  QVERIFY (qml.contains (QStringLiteral ("id: extractionRetryTimer")));
+  QVERIFY (qml.contains (QStringLiteral ("_scheduleExtractionRetry")));
+  QVERIFY (qml.contains (QStringLiteral ("_finishExtractionFailure")));
+}
+
+void
+ProviderRegistryTest::panelRefreshOpensWebViewExtraction ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (qml.contains (QStringLiteral ("function refreshSelectedProvider")));
+  QVERIFY (qml.contains (QStringLiteral ("root.openLoginCenter(root.selectedProvider)")));
+  QVERIFY (qml.contains (QStringLiteral ("onClicked: root.refreshSelectedProvider()")));
+  QVERIFY (!qml.contains (QStringLiteral (
+      "text: qsTr(\"Refresh All\")\n                        onClicked: Applet.quota.refreshAll()")));
+}
+
+void
 ProviderRegistryTest::reactFrontendEntryExists ()
 {
   QFile indexHtml (QStringLiteral (SOURCE_DIR "/web/index.html"));
@@ -193,6 +302,78 @@ ProviderRegistryTest::reactFrontendEntryExists ()
   QVERIFY (cmake.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
   QVERIFY (cmake.contains (QStringLiteral ("install(")));
   QVERIFY (cmake.contains (QStringLiteral ("web/dist/")));
+}
+
+void
+ProviderRegistryTest::codexProviderUrlsMatchAnalyticsUsage ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  QVERIFY (registry.contains (QStringLiteral ("codex")));
+
+  const ProviderDefinition provider = registry.provider (QStringLiteral ("codex"));
+
+  QCOMPARE (provider.loginUrl,
+            QStringLiteral ("https://chatgpt.com/auth/login"));
+  QCOMPARE (provider.quotaUrl,
+            QStringLiteral (
+                "https://chatgpt.com/codex/cloud/settings/analytics#usage"));
+  QCOMPARE (provider.consoleUrl,
+            QStringLiteral (
+                "https://chatgpt.com/codex/cloud/settings/analytics#usage"));
+
+  QVERIFY (provider.allowedOrigins.contains (
+      QStringLiteral ("https://chatgpt.com")));
+  QCOMPARE (provider.sourceType, SourceType::WebView);
+  QVERIFY (!provider.extractorScript.isEmpty ());
+}
+
+void
+ProviderRegistryTest::codexExtractorReadsAnalyticsUsageText ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const ProviderDefinition provider = registry.provider (QStringLiteral ("codex"));
+
+  const QString script = provider.extractorScript;
+
+  QVERIFY (script.contains (QStringLiteral ("codex")));
+  QVERIFY (script.contains (QStringLiteral ("5\\s*小时")));
+  QVERIFY (script.contains (QStringLiteral ("每周|周")));
+  QVERIFY (script.contains (QStringLiteral ("％")));
+  QVERIFY (script.contains (QStringLiteral ("normalizeText")));
+  QVERIFY (script.contains (QStringLiteral ("percentValueFromLine")));
+  QVERIFY (script.contains (QStringLiteral ("offset <= 6")));
+  QVERIFY (script.contains (QStringLiteral ("quotaAfterLabel")));
+  QVERIFY (script.contains (QStringLiteral ("valueGroupIndex")));
+  QVERIFY (script.contains (QStringLiteral ("readableTextFromNodes")));
+  QVERIFY (script.contains (QStringLiteral ("createTreeWalker")));
+  QVERIFY (script.contains (QStringLiteral ("NodeFilter.SHOW_TEXT")));
+  QVERIFY (!script.contains (QStringLiteral ("makeQuota(remainingMatches")));
+  QVERIFY (script.contains (QStringLiteral ("textLength")));
+  QVERIFY (script.contains (QStringLiteral ("excerpt")));
+  QVERIFY (script.contains (QStringLiteral ("location.pathname")));
+  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
+  QVERIFY (script.contains (QStringLiteral ("readTextQuota")));
+  QVERIFY (script.contains (QStringLiteral ("parse_error")));
+  QVERIFY (!script.contains (QStringLiteral ("1 - usedRatio")));
+}
+
+void
+ProviderRegistryTest::reactFallbackProvidersMatchBuiltInRegistry ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/web/src/bridge.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString bridge = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (bridge.contains (QStringLiteral (
+      "https://chatgpt.com/codex/cloud/settings/analytics#usage")));
+  QVERIFY (!bridge.contains (QStringLiteral ("https://chatgpt.com/#settings/usage")));
+  QVERIFY (bridge.contains (QStringLiteral (
+      "https://bigmodel.cn/coding-plan/personal/usage")));
+  QVERIFY (!bridge.contains (QStringLiteral ("https://chatglm.cn/login")));
+  QVERIFY (!bridge.contains (QStringLiteral (
+      "https://open.bigmodel.cn/usercenter/overview")));
 }
 
 void
@@ -541,10 +722,12 @@ ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
   QVERIFY (hasRatioPos >= 0);
   QVERIFY (hasRatioPos > guardPos);
 
-  const qsizetype extractionFailedPos = callback.indexOf (
-      QStringLiteral ("extractionFailed"), guardPos);
-  QVERIFY (extractionFailedPos >= 0);
-  QVERIFY (extractionFailedPos < hasRatioPos);
+  const qsizetype retryPos = callback.indexOf (
+      QStringLiteral ("_scheduleExtractionRetry"), guardPos);
+  QVERIFY (retryPos >= 0);
+  QVERIFY (retryPos < hasRatioPos);
 
-  QVERIFY (callback.contains (QStringLiteral ("_autoMode = false")));
+  QVERIFY (qml.contains (QStringLiteral ("function _finishExtractionFailure")));
+  QVERIFY (qml.contains (QStringLiteral ("extractionFailed(message)")));
+  QVERIFY (qml.contains (QStringLiteral ("_autoMode = false")));
 }

@@ -21,6 +21,43 @@
 
 DWIDGET_USE_NAMESPACE
 
+class FilteringWebEnginePage : public QWebEnginePage
+{
+    Q_OBJECT
+
+public:
+    explicit FilteringWebEnginePage(QWebEngineProfile *profile, QObject *parent = nullptr)
+        : QWebEnginePage(profile, parent)
+    {
+    }
+
+protected:
+    void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level,
+                                  const QString &message,
+                                  int lineNumber,
+                                  const QString &sourceID) override
+    {
+        if (isExpectedConsoleNoise(message)) {
+            return;
+        }
+
+        QWebEnginePage::javaScriptConsoleMessage(level, message, lineNumber, sourceID);
+    }
+
+private:
+    static bool isExpectedConsoleNoise(const QString &message)
+    {
+        return message.contains(QStringLiteral("DialogContent` requires a `DialogTitle"))
+            || message.contains(QStringLiteral("Unrecognized feature: 'ch-ua-form-factors'"))
+            || message.contains(QStringLiteral("Found a 'popover' attribute with an invalid value"))
+            || message.contains(QStringLiteral("RequestError: Failed to fetch"))
+            || message.contains(QStringLiteral("Failed to fetch"))
+            || (message.contains(QStringLiteral("DOMException"))
+                && message.contains(QStringLiteral("[object Object]")))
+            || message.contains(QStringLiteral("RecoverableError: Minified React error #418"));
+    }
+};
+
 class MainWindow : public DMainWindow
 {
     Q_OBJECT
@@ -39,7 +76,7 @@ public:
         m_webView = new QWebEngineView(this);
         setCentralWidget(m_webView);
 
-        auto *page = new QWebEnginePage(m_profile, this);
+        auto *page = new FilteringWebEnginePage(m_profile, this);
         m_webView->setPage(page);
         m_webView->settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessRemoteUrls, true);
         m_webView->settings()->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
@@ -56,6 +93,7 @@ public:
 
         connect(m_webView, &QWebEngineView::loadFinished, this, &MainWindow::onPageLoadFinished);
         connect(m_bridge, &WebBridge::loginPageRequested, this, &MainWindow::onLoginPageRequested);
+        connect(m_bridge, &WebBridge::refreshAllRequested, this, &MainWindow::onRefreshAllRequested);
         connect(m_bridge, &WebBridge::loginFinished, this, &MainWindow::onLoginFinished);
     }
 
@@ -83,10 +121,13 @@ public:
 private slots:
     void onLoginPageRequested(const QString &providerId, const QString &loginUrl)
     {
+        qWarning() << "[coding-plan][standalone] login/extract requested"
+                 << providerId << loginUrl;
         m_loginProviderId = providerId;
         m_loginProviderConfig = m_bridge->getProviderConfig(providerId);
         m_loginPhase = 0;
         m_loginQuotaProbeStarted = false;
+        m_extractionAttempts = 0;
         m_webView->setUrl(QUrl(loginUrl));
     }
 
@@ -96,6 +137,26 @@ private slots:
         if (!m_reactUrl.isEmpty()) {
             m_webView->setUrl(QUrl(m_reactUrl));
         }
+
+        if (!m_refreshQueue.isEmpty()) {
+            QTimer::singleShot(500, this, &MainWindow::refreshNextProvider);
+        }
+    }
+
+    void onRefreshAllRequested()
+    {
+        qWarning() << "[coding-plan][standalone] refresh all requested";
+        m_refreshQueue.clear();
+        const QVariantList providers = m_bridge->providers();
+        for (const QVariant &item : providers) {
+            const QVariantMap provider = item.toMap();
+            const QString providerId = provider.value(QStringLiteral("id")).toString();
+            const QString quotaUrl = provider.value(QStringLiteral("quotaUrl")).toString();
+            if (!providerId.isEmpty() && !quotaUrl.isEmpty()) {
+                m_refreshQueue.append(providerId);
+            }
+        }
+        refreshNextProvider();
     }
 
     void onPageLoadFinished(bool ok)
@@ -163,28 +224,94 @@ private slots:
             return;
         }
 
+        m_extractionAttempts = 0;
         QTimer::singleShot(1500, this, [this, extractorScript]() {
-            m_webView->page()->runJavaScript(extractorScript, [this](const QVariant &result) {
-                const QVariantMap data = result.toMap();
-                const QString providerId = m_loginProviderId;
-
-                if (data.value(QStringLiteral("status")).toString() == QStringLiteral("ok")) {
-                    m_bridge->setWebViewResult(providerId, data);
-                } else {
-                    m_bridge->setProviderError(providerId,
-                                               data.value(QStringLiteral("message")).toString());
-                }
-
-                m_loginProviderId.clear();
-                m_loginProviderConfig.clear();
-                m_loginPhase = 0;
-                m_loginQuotaProbeStarted = false;
-                onLoginFinished(providerId);
-            });
+            runExtractorWithRetry(extractorScript);
         });
     }
 
 private:
+    void refreshNextProvider()
+    {
+        if (m_refreshQueue.isEmpty() || !m_loginProviderId.isEmpty()) {
+            return;
+        }
+
+        const QString providerId = m_refreshQueue.takeFirst();
+        const QVariantMap provider = m_bridge->getProviderConfig(providerId);
+        const QString quotaUrl = provider.value(QStringLiteral("quotaUrl")).toString();
+        if (quotaUrl.isEmpty()) {
+            refreshNextProvider();
+            return;
+        }
+
+        onLoginPageRequested(providerId, quotaUrl);
+    }
+
+    void runExtractorWithRetry(const QString &extractorScript)
+    {
+        if (m_loginProviderId.isEmpty()) {
+            return;
+        }
+
+        m_extractionAttempts += 1;
+        qWarning() << "[coding-plan][standalone] extract attempt"
+                 << m_loginProviderId
+                 << "attempt" << m_extractionAttempts
+                 << "url" << m_webView->url().toString();
+        m_webView->page()->runJavaScript(extractorScript, [this, extractorScript](const QVariant &result) {
+            const QVariantMap data = result.toMap();
+            const QString status = data.value(QStringLiteral("status")).toString();
+            qWarning() << "[coding-plan][standalone] extract result"
+                     << m_loginProviderId
+                     << "attempt" << m_extractionAttempts
+                     << "status" << status
+                     << "remaining" << data.value(QStringLiteral("remainingRatio"))
+                     << "fiveHour" << data.value(QStringLiteral("fiveHourRemainingRatio"))
+                     << "balanceText" << data.value(QStringLiteral("balanceText")).toString()
+                     << "fiveHourText" << data.value(QStringLiteral("fiveHourBalanceText")).toString()
+                     << "message" << data.value(QStringLiteral("message")).toString();
+
+            if (status == QStringLiteral("ok")) {
+                const QString providerId = m_loginProviderId;
+                m_bridge->setWebViewResult(providerId, data);
+                finishExtraction(providerId);
+                return;
+            }
+
+            if (m_extractionAttempts < maxExtractionAttempts()) {
+                qWarning() << "[coding-plan][standalone] extract retry scheduled"
+                         << m_loginProviderId
+                         << "attempt" << m_extractionAttempts;
+                QTimer::singleShot(1200, this, [this, extractorScript]() {
+                    runExtractorWithRetry(extractorScript);
+                });
+                return;
+            }
+
+            const QString providerId = m_loginProviderId;
+            m_bridge->setProviderError(providerId,
+                                       data.value(QStringLiteral("message")).toString());
+            finishExtraction(providerId);
+        });
+    }
+
+    void finishExtraction(const QString &providerId)
+    {
+        qWarning() << "[coding-plan][standalone] finish extraction" << providerId;
+        m_loginProviderId.clear();
+        m_loginProviderConfig.clear();
+        m_loginPhase = 0;
+        m_loginQuotaProbeStarted = false;
+        m_extractionAttempts = 0;
+        onLoginFinished(providerId);
+    }
+
+    static int maxExtractionAttempts()
+    {
+        return 6;
+    }
+
     bool isAllowedOrigin(const QUrl &url) const
     {
         const QString pageOrigin = url.scheme() + QStringLiteral("://") + url.host();
@@ -199,7 +326,9 @@ private:
     QString m_reactUrl;
     QString m_loginProviderId;
     QVariantMap m_loginProviderConfig;
+    QStringList m_refreshQueue;
     int m_loginPhase = 0;
+    int m_extractionAttempts = 0;
     bool m_loginQuotaProbeStarted = false;
 };
 

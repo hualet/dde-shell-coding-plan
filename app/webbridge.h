@@ -33,6 +33,7 @@ public:
 signals:
     void dataChanged();
     void loginPageRequested(const QString &providerId, const QString &loginUrl);
+    void refreshAllRequested();
     void loginFinished(const QString &providerId);
 
 private:

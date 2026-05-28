@@ -78,6 +78,13 @@ AppletItem {
         root.configureWebView()
     }
 
+    function refreshSelectedProvider() {
+        if (!root.selectedProvider.providerId && root.quotaSnapshots.length > 0) {
+            root.selectedProvider = root.quotaSnapshots[0]
+        }
+        root.openLoginCenter(root.selectedProvider)
+    }
+
     function configureWebView() {
         if (!webLoader.item || !root.selectedProvider.providerId)
             return
@@ -429,7 +436,7 @@ AppletItem {
                     Button {
                         Layout.fillWidth: true
                         text: qsTr("Refresh All")
-                        onClicked: Applet.quota.refreshAll()
+                        onClicked: root.refreshSelectedProvider()
                     }
                 }
 
