@@ -74,6 +74,10 @@ AppletItem {
         }
 
         popup.close()
+        webPopup.DockPanelPositioner.bounding = Qt.binding(function () {
+            var point = root.mapToItem(null, root.width / 2, root.height / 2)
+            return Qt.rect(point.x, point.y, webPopup.width, webPopup.height)
+        })
         webPopup.open()
         root.configureWebView()
     }
@@ -126,6 +130,10 @@ AppletItem {
                 popup.close()
             } else {
                 Panel.requestClosePopup()
+                popup.DockPanelPositioner.bounding = Qt.binding(function () {
+                    var point = root.mapToItem(null, root.width / 2, root.height / 2)
+                    return Qt.rect(point.x, point.y, popup.width, popup.height)
+                })
                 popup.open()
             }
             toolTip.close()
@@ -303,7 +311,6 @@ AppletItem {
                                         text: qsTr("5小时额度：%1").arg(root.fiveHourQuotaPercent(modelData))
                                         font.pixelSize: 12
                                         font.bold: true
-                                        color: DockPalette.iconTextPalette.color
                                     }
                                 }
 
@@ -323,7 +330,6 @@ AppletItem {
                                         text: qsTr("周额度：%1").arg(root.quotaPercent(modelData))
                                         font.pixelSize: 12
                                         font.bold: true
-                                        color: DockPalette.iconTextPalette.color
                                     }
                                 }
                             }
