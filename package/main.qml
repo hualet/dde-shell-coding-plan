@@ -22,7 +22,7 @@ AppletItem {
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
     property bool _reopenPopupAfterWebClose: false
 
-    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize / 2) + (visibleRingCount - 1) * 4 + 16)
+    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
 
     function severityColor(severity) {
@@ -164,8 +164,8 @@ AppletItem {
 
             Canvas {
                 id: ring
-                width: root.dockSize / 2
-                height: root.dockSize / 2
+                width: root.dockSize * 3 / 5
+                height: root.dockSize * 3 / 5
                 readonly property var snapshot: root.quotaSnapshots[index]
 
                 onPaint: {

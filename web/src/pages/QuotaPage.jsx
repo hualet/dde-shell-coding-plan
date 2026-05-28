@@ -64,7 +64,7 @@ export default function QuotaPage() {
 
   const fiveHourPercent = snapshot && snapshot.fiveHourRemainingRatio >= 0
     ? Math.round(snapshot.fiveHourRemainingRatio * 100)
-    : (weeklyPercent !== null ? weeklyPercent : null);
+    : null;
 
   const statusLabel = snapshot?.status === 'ok' ? '正常'
     : snapshot?.status === 'warning' ? '预警'
@@ -149,15 +149,15 @@ export default function QuotaPage() {
             </Box>
           )}
 
-          {snapshot?.balanceText && (
+          {snapshot?.fiveHourBalanceText && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-              周额度余额: {snapshot.balanceText}
+              5小时额度余额: {snapshot.fiveHourBalanceText}
             </Typography>
           )}
 
-          {snapshot?.fiveHourBalanceText && (
+          {snapshot?.balanceText && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              5小时额度余额: {snapshot.fiveHourBalanceText}
+              周额度余额: {snapshot.balanceText}
             </Typography>
           )}
 
