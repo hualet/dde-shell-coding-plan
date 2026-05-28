@@ -74,10 +74,6 @@ AppletItem {
         }
 
         popup.close()
-        webPopup.DockPanelPositioner.bounding = Qt.binding(function () {
-            var point = root.mapToItem(null, root.width / 2, root.height / 2)
-            return Qt.rect(point.x, point.y, webPopup.width, webPopup.height)
-        })
         webPopup.open()
         root.configureWebView()
     }
@@ -130,10 +126,6 @@ AppletItem {
                 popup.close()
             } else {
                 Panel.requestClosePopup()
-                popup.DockPanelPositioner.bounding = Qt.binding(function () {
-                    var point = root.mapToItem(null, root.width / 2, root.height / 2)
-                    return Qt.rect(point.x, point.y, popup.width, popup.height)
-                })
                 popup.open()
             }
             toolTip.close()
@@ -259,6 +251,13 @@ AppletItem {
         popupX: DockPanelPositioner.x
         popupY: DockPanelPositioner.y
 
+        Component.onCompleted: {
+            DockPanelPositioner.bounding = Qt.binding(function () {
+                const point = root.mapToItem(null, root.width / 2, root.height / 2)
+                return Qt.rect(point.x, point.y, popup.width, popup.height)
+            })
+        }
+
         Control {
             id: popupContent
             width: 390
@@ -345,6 +344,13 @@ AppletItem {
         height: 640
         popupX: DockPanelPositioner.x
         popupY: DockPanelPositioner.y
+
+        Component.onCompleted: {
+            DockPanelPositioner.bounding = Qt.binding(function () {
+                const point = root.mapToItem(null, root.width / 2, root.height / 2)
+                return Qt.rect(point.x, point.y, webPopup.width, webPopup.height)
+            })
+        }
 
         onPopupVisibleChanged: {
             if (!webPopup.popupVisible && root._reopenPopupAfterWebClose) {
