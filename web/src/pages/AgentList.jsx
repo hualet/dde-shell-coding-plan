@@ -33,7 +33,7 @@ function AgentCard({ provider, snapshot, onNavigate }) {
 
   const fiveHourPercent = snapshot && snapshot.fiveHourRemainingRatio >= 0
     ? Math.round(snapshot.fiveHourRemainingRatio * 100)
-    : (weeklyPercent !== null ? weeklyPercent : null);
+    : null;
 
   const barColor = snapshot?.severity === 'normal' ? 'success.main'
     : snapshot?.severity === 'warning' ? 'warning.main'
