@@ -22,7 +22,7 @@ AppletItem {
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
     property bool _reopenPopupAfterWebClose: false
 
-    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * 24 + 16)
+    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize / 2) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
 
     function severityColor(severity) {
@@ -164,24 +164,50 @@ AppletItem {
 
             Canvas {
                 id: ring
-                width: 20
-                height: 20
+                width: root.dockSize / 2
+                height: root.dockSize / 2
                 readonly property var snapshot: root.quotaSnapshots[index]
 
                 onPaint: {
                     const ctx = getContext("2d")
                     ctx.clearRect(0, 0, width, height)
                     const center = width / 2
-                    const radius = width / 2 - 2
-                    const ratio = Math.max(0, Math.min(1, snapshot.remainingRatio || 0))
-                    ctx.lineWidth = 2.4
+
+                    // Outer ring - weekly quota
+                    const outerRadius = center - 3
+                    const outerRatio = Math.max(0, Math.min(1, snapshot.remainingRatio || 0))
+
+                    // Inner ring - 5-hour quota
+                    const innerRadius = center - 7
+                    const innerRaw = snapshot.fiveHourRemainingRatio
+                    const innerRatio = (innerRaw !== undefined && innerRaw !== null && innerRaw >= 0)
+                        ? Math.max(0, Math.min(1, innerRaw))
+                        : (snapshot.remainingRatio >= 0 ? Math.max(0, Math.min(1, snapshot.remainingRatio)) : 0)
+
+                    // Background arcs
+                    ctx.lineWidth = 3
                     ctx.strokeStyle = "rgba(128, 128, 128, 0.24)"
                     ctx.beginPath()
-                    ctx.arc(center, center, radius, 0, Math.PI * 2)
+                    ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
                     ctx.stroke()
-                    ctx.strokeStyle = root.severityColor(snapshot.severity)
+
+                    ctx.lineWidth = 2.5
                     ctx.beginPath()
-                    ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
+                    ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
+                    ctx.stroke()
+
+                    // Colored arcs
+                    const color = root.severityColor(snapshot.severity)
+
+                    ctx.strokeStyle = color
+                    ctx.lineWidth = 3
+                    ctx.beginPath()
+                    ctx.arc(center, center, outerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * outerRatio)
+                    ctx.stroke()
+
+                    ctx.lineWidth = 2.5
+                    ctx.beginPath()
+                    ctx.arc(center, center, innerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * innerRatio)
                     ctx.stroke()
                 }
 
@@ -195,7 +221,7 @@ AppletItem {
                 Text {
                     anchors.centerIn: parent
                     text: root.providerInitial(parent.snapshot.providerName)
-                    font.pixelSize: 9
+                    font.pixelSize: Math.max(9, parent.width * 0.35)
                     font.bold: true
                     color: DockPalette.iconTextPalette.color
                 }

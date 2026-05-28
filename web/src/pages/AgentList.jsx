@@ -28,8 +28,17 @@ function AgentCard({ provider, snapshot, onNavigate }) {
     }
   };
 
-  const remainingPercent = snapshot && snapshot.remainingRatio >= 0
+  const weeklyPercent = snapshot && snapshot.remainingRatio >= 0
     ? Math.round(snapshot.remainingRatio * 100) : null;
+
+  const fiveHourPercent = snapshot && snapshot.fiveHourRemainingRatio >= 0
+    ? Math.round(snapshot.fiveHourRemainingRatio * 100)
+    : (weeklyPercent !== null ? weeklyPercent : null);
+
+  const barColor = snapshot?.severity === 'normal' ? 'success.main'
+    : snapshot?.severity === 'warning' ? 'warning.main'
+    : snapshot?.severity === 'critical' ? 'error.main'
+    : 'grey.400';
 
   return (
     <Card
@@ -60,11 +69,6 @@ function AgentCard({ provider, snapshot, onNavigate }) {
                 sx={{ height: 24, fontSize: '0.75rem' }}
               />
             </Stack>
-            {remainingPercent !== null && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                剩余 {remainingPercent}%
-              </Typography>
-            )}
             {!loggedIn && snapshot && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {snapshot.message || '需要登录'}
@@ -83,20 +87,26 @@ function AgentCard({ provider, snapshot, onNavigate }) {
             </IconButton>
           </Stack>
         </Stack>
-        {remainingPercent !== null && (
-          <Box sx={{ mt: 1, width: '100%', height: 6, borderRadius: 3, bgcolor: 'grey.200' }}>
-            <Box
-              sx={{
-                height: '100%',
-                borderRadius: 3,
-                width: `${remainingPercent}%`,
-                bgcolor: snapshot.severity === 'normal' ? 'success.main'
-                  : snapshot.severity === 'warning' ? 'warning.main'
-                  : snapshot.severity === 'critical' ? 'error.main'
-                  : 'grey.400',
-                transition: 'width 0.3s',
-              }}
-            />
+        {fiveHourPercent !== null && (
+          <Box sx={{ mt: 1 }}>
+            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
+              <Typography variant="body2" color="text.secondary">5小时额度</Typography>
+              <Typography variant="body2" fontWeight={600}>{fiveHourPercent}%</Typography>
+            </Stack>
+            <Box sx={{ width: '100%', height: 4, borderRadius: 2, bgcolor: 'grey.200' }}>
+              <Box sx={{ height: '100%', borderRadius: 2, width: `${fiveHourPercent}%`, bgcolor: barColor, transition: 'width 0.3s' }} />
+            </Box>
+          </Box>
+        )}
+        {weeklyPercent !== null && (
+          <Box sx={{ mt: 0.8 }}>
+            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
+              <Typography variant="body2" color="text.secondary">周额度</Typography>
+              <Typography variant="body2" fontWeight={600}>{weeklyPercent}%</Typography>
+            </Stack>
+            <Box sx={{ width: '100%', height: 4, borderRadius: 2, bgcolor: 'grey.200' }}>
+              <Box sx={{ height: '100%', borderRadius: 2, width: `${weeklyPercent}%`, bgcolor: barColor, transition: 'width 0.3s' }} />
+            </Box>
           </Box>
         )}
       </CardContent>

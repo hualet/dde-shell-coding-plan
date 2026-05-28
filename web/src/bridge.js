@@ -29,9 +29,9 @@ const MOCK_PROVIDERS = [
 ];
 
 const MOCK_SNAPSHOTS = [
-  { providerId: 'codex', providerName: 'Codex / ChatGPT', source: 'webview', status: 'ok', severity: 'normal', remainingRatio: 0.75, used: -1, total: -1, unit: '', balanceText: '75%', message: '', updatedAt: new Date().toISOString(), consoleUrl: 'https://chatgpt.com/#settings/usage' },
-  { providerId: 'kimi-code', providerName: 'Kimi Code', source: 'webview', status: 'auth_error', severity: 'error', remainingRatio: -1, used: -1, total: -1, unit: '', balanceText: '', message: '等待登录', updatedAt: new Date().toISOString(), consoleUrl: 'https://www.kimi.com/code/console' },
-  { providerId: 'glm-coding', providerName: 'GLM Coding', source: 'webview', status: 'ok', severity: 'warning', remainingRatio: 0.22, used: -1, total: -1, unit: '', balanceText: '22%', message: '', updatedAt: new Date().toISOString(), consoleUrl: 'https://open.bigmodel.cn/usercenter/overview' },
+  { providerId: 'codex', providerName: 'Codex / ChatGPT', source: 'webview', status: 'ok', severity: 'normal', remainingRatio: 0.75, fiveHourRemainingRatio: 0.60, used: -1, total: -1, unit: '', balanceText: '75%', fiveHourBalanceText: '60%', message: '', updatedAt: new Date().toISOString(), consoleUrl: 'https://chatgpt.com/#settings/usage' },
+  { providerId: 'kimi-code', providerName: 'Kimi Code', source: 'webview', status: 'auth_error', severity: 'error', remainingRatio: -1, fiveHourRemainingRatio: -1, used: -1, total: -1, unit: '', balanceText: '', fiveHourBalanceText: '', message: '等待登录', updatedAt: new Date().toISOString(), consoleUrl: 'https://www.kimi.com/code/console' },
+  { providerId: 'glm-coding', providerName: 'GLM Coding', source: 'webview', status: 'ok', severity: 'warning', remainingRatio: 0.22, fiveHourRemainingRatio: 0.15, used: -1, total: -1, unit: '', balanceText: '22%', fiveHourBalanceText: '15%', message: '', updatedAt: new Date().toISOString(), consoleUrl: 'https://open.bigmodel.cn/usercenter/overview' },
 ];
 
 async function callBridge(method, ...args) {

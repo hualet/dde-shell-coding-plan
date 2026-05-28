@@ -59,8 +59,12 @@ export default function QuotaPage() {
     );
   }
 
-  const remainingPercent = snapshot && snapshot.remainingRatio >= 0
+  const weeklyPercent = snapshot && snapshot.remainingRatio >= 0
     ? Math.round(snapshot.remainingRatio * 100) : null;
+
+  const fiveHourPercent = snapshot && snapshot.fiveHourRemainingRatio >= 0
+    ? Math.round(snapshot.fiveHourRemainingRatio * 100)
+    : (weeklyPercent !== null ? weeklyPercent : null);
 
   const statusLabel = snapshot?.status === 'ok' ? '正常'
     : snapshot?.status === 'warning' ? '预警'
@@ -99,18 +103,41 @@ export default function QuotaPage() {
             sx={{ mb: 2 }}
           />
 
-          {remainingPercent !== null && (
-            <Box sx={{ mb: 2 }}>
+          {fiveHourPercent !== null && (
+            <Box sx={{ mb: 1.5 }}>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
-                <Typography variant="body2" color="text.secondary">额度剩余</Typography>
-                <Typography variant="body2" fontWeight={600}>{remainingPercent}%</Typography>
+                <Typography variant="body2" color="text.secondary">5小时额度</Typography>
+                <Typography variant="body2" fontWeight={600}>{fiveHourPercent}%</Typography>
               </Stack>
               <Box sx={{ width: '100%', height: 10, borderRadius: 5, bgcolor: 'grey.200' }}>
                 <Box
                   sx={{
                     height: '100%',
                     borderRadius: 5,
-                    width: `${remainingPercent}%`,
+                    width: `${fiveHourPercent}%`,
+                    bgcolor: snapshot?.severity === 'normal' ? 'success.main'
+                      : snapshot?.severity === 'warning' ? 'warning.main'
+                      : snapshot?.severity === 'critical' ? 'error.main'
+                      : 'grey.400',
+                    transition: 'width 0.3s',
+                  }}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {weeklyPercent !== null && (
+            <Box sx={{ mb: 1.5 }}>
+              <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                <Typography variant="body2" color="text.secondary">周额度</Typography>
+                <Typography variant="body2" fontWeight={600}>{weeklyPercent}%</Typography>
+              </Stack>
+              <Box sx={{ width: '100%', height: 10, borderRadius: 5, bgcolor: 'grey.200' }}>
+                <Box
+                  sx={{
+                    height: '100%',
+                    borderRadius: 5,
+                    width: `${weeklyPercent}%`,
                     bgcolor: snapshot?.severity === 'normal' ? 'success.main'
                       : snapshot?.severity === 'warning' ? 'warning.main'
                       : snapshot?.severity === 'critical' ? 'error.main'
@@ -123,8 +150,14 @@ export default function QuotaPage() {
           )}
 
           {snapshot?.balanceText && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              周额度余额: {snapshot.balanceText}
+            </Typography>
+          )}
+
+          {snapshot?.fiveHourBalanceText && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              余额: {snapshot.balanceText}
+              5小时额度余额: {snapshot.fiveHourBalanceText}
             </Typography>
           )}
 
