@@ -203,6 +203,159 @@ kimiCodeExtractorScript ()
 )JS")
       .arg (metadataJson);
 }
+
+QString
+glmCodingExtractorScript ()
+{
+  const QJsonObject metadata{ { QStringLiteral ("provider"),
+                                QStringLiteral ("glm-coding") } };
+  const QString metadataJson = QString::fromUtf8 (
+      QJsonDocument (metadata).toJson (QJsonDocument::Compact));
+
+  return QStringLiteral (R"JS(
+(function() {
+  const metadata = %1;
+
+  function clampRatio(value) {
+    if (!Number.isFinite(value)) return -1;
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function percentText(ratio) {
+    if (!Number.isFinite(ratio) || ratio < 0) return "";
+    return Math.round(ratio * 100) + "%%";
+  }
+
+  function cookieValue(name) {
+    var prefix = name + "=";
+    var parts = document.cookie.split(";");
+    for (var index = 0; index < parts.length; ++index) {
+      var part = parts[index].trim();
+      if (part.indexOf(prefix) === 0) {
+        return decodeURIComponent(part.slice(prefix.length));
+      }
+    }
+    return "";
+  }
+
+  function limitToQuota(limit) {
+    if (!limit) return null;
+    var usedRatio = clampRatio(Number(limit.percentage) / 100);
+    var remainingRatio = usedRatio >= 0 ? 1 - usedRatio : -1;
+    return {
+      ratio: remainingRatio,
+      text: percentText(remainingRatio),
+      used: Number(limit.percentage),
+      total: 100,
+      resetAt: Number.isFinite(Number(limit.nextResetTime))
+        ? new Date(Number(limit.nextResetTime)).toISOString()
+        : ""
+    };
+  }
+
+  function readQuotaLimit() {
+    var token = cookieValue("bigmodel_token_production");
+    if (!token) return null;
+
+    var request = new XMLHttpRequest();
+    request.open("GET", "/api/monitor/usage/quota/limit", false);
+    request.setRequestHeader("Authorization", token);
+    request.send();
+
+    if (request.status < 200 || request.status >= 300) return null;
+
+    var payload = JSON.parse(request.responseText);
+    var limits = payload && payload.data && Array.isArray(payload.data.limits)
+      ? payload.data.limits
+      : [];
+    var fiveHour = limits.find(function(item) {
+      return item && item.type === "TOKENS_LIMIT" && item.unit === 3;
+    });
+    var weekly = limits.find(function(item) {
+      return item && item.type === "TOKENS_LIMIT" && item.unit === 6;
+    });
+
+    return {
+      weekly: limitToQuota(weekly),
+      fiveHour: limitToQuota(fiveHour)
+    };
+  }
+
+  function readTextQuota(label) {
+    var text = document.body ? document.body.innerText : "";
+    var labelIndex = text.indexOf(label);
+    if (labelIndex < 0) return null;
+
+    var section = text.slice(labelIndex, labelIndex + 200);
+    var percentMatch = section.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
+    if (!percentMatch) return null;
+
+    var usedRatio = clampRatio(Number(percentMatch[1]) / 100);
+    var remainingRatio = usedRatio >= 0 ? 1 - usedRatio : -1;
+    return {
+      ratio: remainingRatio,
+      text: percentText(remainingRatio),
+      used: -1,
+      total: -1,
+      resetAt: ""
+    };
+  }
+
+  function readDomFallback() {
+    return {
+      weekly: readTextQuota("每周使用额度"),
+      fiveHour: readTextQuota("每5小时使用额度")
+    };
+  }
+
+  var parsed = null;
+  try {
+    parsed = readQuotaLimit();
+  } catch (error) {
+    parsed = null;
+  }
+
+  if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
+    parsed = readDomFallback();
+  }
+
+  if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
+    return {
+      providerId: metadata.provider,
+      status: "parse_error",
+      message: "未在 GLM Coding 用量页识别到额度信息，请确认已登录且用量页面已完全加载。",
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  var result = {
+    providerId: metadata.provider,
+    status: "ok",
+    updatedAt: new Date().toISOString()
+  };
+
+  if (parsed.weekly) {
+    result.remainingRatio = parsed.weekly.ratio;
+    result.balanceText = parsed.weekly.text;
+    if (parsed.weekly.used >= 0) result.used = parsed.weekly.used;
+    if (parsed.weekly.total >= 0) result.total = parsed.weekly.total;
+    if (parsed.weekly.resetAt) result.resetAt = parsed.weekly.resetAt;
+  }
+
+  if (parsed.fiveHour) {
+    result.fiveHourRemainingRatio = parsed.fiveHour.ratio;
+    result.fiveHourBalanceText = parsed.fiveHour.text;
+    if (!parsed.weekly) {
+      result.remainingRatio = parsed.fiveHour.ratio;
+      result.balanceText = parsed.fiveHour.text;
+    }
+  }
+
+  return result;
+})()
+)JS")
+      .arg (metadataJson);
+}
 }
 
 PanelSeverity
@@ -302,12 +455,12 @@ ProviderRegistry::createDefault ()
       { QStringLiteral ("glm-coding"),
         QStringLiteral ("GLM Coding"),
         SourceType::WebView,
-        QStringLiteral ("https://chatglm.cn/login"),
-        QStringLiteral ("https://chatglm.cn/"),
-        QStringLiteral ("https://open.bigmodel.cn/usercenter/overview"),
-        { QStringLiteral ("https://chatglm.cn"),
+        QStringLiteral ("https://bigmodel.cn/"),
+        QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"),
+        QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"),
+        { QStringLiteral ("https://bigmodel.cn"),
           QStringLiteral ("https://open.bigmodel.cn") },
-        webExtractorScript (QStringLiteral ("glm-coding")) });
+        glmCodingExtractorScript () });
 
   return registry;
 }

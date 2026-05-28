@@ -20,6 +20,8 @@ private slots:
   void reactFrontendEntryExists ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
   void kimiCodeExtractorReadsBillingUsageApi ();
+  void glmCodingProviderUrlsMatchCodingPlanUsage ();
+  void glmCodingExtractorReadsQuotaLimitApi ();
   void kimiCodeDualQuotaSnapshotContract ();
   void fiveHourDefaultIsNegativeOne ();
   void kimiCodeExtractorOmitsFieldsOnNull ();
@@ -239,6 +241,48 @@ ProviderRegistryTest::kimiCodeExtractorReadsBillingUsageApi ()
   QVERIFY (!script.contains (QStringLiteral ("nth-child")));
   QVERIFY (script.contains (QStringLiteral ("kimi-code")));
   QVERIFY (script.contains (QStringLiteral ("fiveHourBalanceText")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
+  QVERIFY (script.contains (QStringLiteral ("parse_error")));
+}
+
+void
+ProviderRegistryTest::glmCodingProviderUrlsMatchCodingPlanUsage ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  QVERIFY (registry.contains (QStringLiteral ("glm-coding")));
+
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("glm-coding"));
+
+  QCOMPARE (provider.loginUrl, QStringLiteral ("https://bigmodel.cn/"));
+  QCOMPARE (provider.quotaUrl,
+            QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"));
+  QCOMPARE (provider.consoleUrl,
+            QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"));
+
+  QVERIFY (provider.allowedOrigins.contains (
+      QStringLiteral ("https://bigmodel.cn")));
+  QCOMPARE (provider.sourceType, SourceType::WebView);
+  QVERIFY (!provider.extractorScript.isEmpty ());
+}
+
+void
+ProviderRegistryTest::glmCodingExtractorReadsQuotaLimitApi ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("glm-coding"));
+
+  const QString script = provider.extractorScript;
+
+  QVERIFY (script.contains (QStringLiteral ("glm-coding")));
+  QVERIFY (script.contains (QStringLiteral ("bigmodel_token_production")));
+  QVERIFY (script.contains (QStringLiteral ("/api/monitor/usage/quota/limit")));
+  QVERIFY (script.contains (QStringLiteral ("TOKENS_LIMIT")));
+  QVERIFY (script.contains (QStringLiteral ("unit === 3")));
+  QVERIFY (script.contains (QStringLiteral ("unit === 6")));
+  QVERIFY (script.contains (QStringLiteral ("usedRatio")));
+  QVERIFY (script.contains (QStringLiteral ("1 - usedRatio")));
   QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
   QVERIFY (script.contains (QStringLiteral ("parse_error")));
 }
