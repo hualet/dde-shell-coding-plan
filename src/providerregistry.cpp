@@ -71,10 +71,14 @@ kimiCodeExtractorScript ()
     if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) {
       return null;
     }
-    var ratio = clampRatio(used / limit);
+    var remaining = Number(detail.remaining);
+    if (!Number.isFinite(remaining)) {
+      remaining = limit - used;
+    }
+    var remainingRatio = clampRatio(remaining / limit);
     return {
-      ratio: ratio,
-      text: percentText(ratio),
+      ratio: remainingRatio,
+      text: percentText(remainingRatio),
       used: used,
       total: limit,
       resetAt: detail.resetTime || ""
@@ -127,10 +131,11 @@ kimiCodeExtractorScript ()
     var percentMatch = section.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
     if (!percentMatch) return null;
 
-    var ratio = clampRatio(Number(percentMatch[1]) / 100);
+    var usedRatio = clampRatio(Number(percentMatch[1]) / 100);
+    var remainingRatio = usedRatio >= 0 ? 1 - usedRatio : -1;
     return {
-      ratio: ratio,
-      text: percentMatch[0],
+      ratio: remainingRatio,
+      text: percentText(remainingRatio),
       used: -1,
       total: -1,
       resetAt: ""

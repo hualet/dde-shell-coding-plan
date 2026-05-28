@@ -230,6 +230,10 @@ ProviderRegistryTest::kimiCodeExtractorReadsBillingUsageApi ()
   QVERIFY (script.contains (QStringLiteral ("localStorage.getItem('access_token')")));
   QVERIFY (script.contains (QStringLiteral ("usage.detail")));
   QVERIFY (script.contains (QStringLiteral ("usage.limits")));
+  QVERIFY (script.contains (QStringLiteral ("detail.remaining")));
+  QVERIFY (script.contains (QStringLiteral ("limit - used")));
+  QVERIFY (script.contains (QStringLiteral ("usedRatio")));
+  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
   QVERIFY (script.contains (QStringLiteral ("fiveHour")));
   QVERIFY (!script.contains (QStringLiteral ("stats-section")));
   QVERIFY (!script.contains (QStringLiteral ("nth-child")));
