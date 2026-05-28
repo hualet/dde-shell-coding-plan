@@ -19,15 +19,17 @@ private slots:
   void standaloneAppSourceFilesExist ();
   void reactFrontendEntryExists ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
-  void kimiCodeExtractorTargetsConsoleSelectors ();
+  void kimiCodeExtractorReadsBillingUsageApi ();
   void kimiCodeDualQuotaSnapshotContract ();
   void fiveHourDefaultIsNegativeOne ();
   void kimiCodeExtractorOmitsFieldsOnNull ();
   void fiveHourMissingFieldStaysNegativeOne ();
   void fiveHourQuotaPercentFallsBackToText ();
   void webViewAcceptsTextOnlyResult ();
+  void webPopupReturnsToStatusAfterAutoExtractionFailure ();
   void loginPageDetectionBlocksPrematureExtraction ();
   void mainCppLoginGuardBlocksReload ();
+  void standaloneLoginPageProbesQuotaUrlBeforeWaiting ();
   void nullResultDoesNotCrashAndEntersFailureCallback ();
 };
 
@@ -172,7 +174,7 @@ ProviderRegistryTest::reactFrontendEntryExists ()
   QVERIFY2 (indexHtml.open (QIODevice::ReadOnly), "web/index.html should be readable");
   const QString indexContent = QString::fromUtf8 (indexHtml.readAll ());
   QVERIFY (indexContent.contains (
-      QStringLiteral ("qrc:///qtwebchannel/qwebchannel.js")));
+      QStringLiteral ("./qwebchannel.js")));
 
   QFile packageJson (QStringLiteral (SOURCE_DIR "/web/package.json"));
   QVERIFY2 (packageJson.open (QIODevice::ReadOnly), "web/package.json should be readable");
@@ -214,7 +216,7 @@ ProviderRegistryTest::kimiCodeProviderUrlsMatchCodeConsole ()
 }
 
 void
-ProviderRegistryTest::kimiCodeExtractorTargetsConsoleSelectors ()
+ProviderRegistryTest::kimiCodeExtractorReadsBillingUsageApi ()
 {
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
   const ProviderDefinition provider
@@ -222,11 +224,15 @@ ProviderRegistryTest::kimiCodeExtractorTargetsConsoleSelectors ()
 
   const QString script = provider.extractorScript;
 
-  QVERIFY (script.contains (QStringLiteral ("stats-section")));
-  QVERIFY (script.contains (QStringLiteral ("stats-desktop")));
-  QVERIFY (script.contains (QStringLiteral ("nth-child(1)")));
-  QVERIFY (script.contains (QStringLiteral ("nth-child(2)")));
-  QVERIFY (script.contains (QStringLiteral ("querySelector")));
+  QVERIFY (script.contains (QStringLiteral (
+      "kimi.gateway.billing.v1.BillingService/GetUsages")));
+  QVERIFY (script.contains (QStringLiteral ("FEATURE_CODING")));
+  QVERIFY (script.contains (QStringLiteral ("localStorage.getItem('access_token')")));
+  QVERIFY (script.contains (QStringLiteral ("usage.detail")));
+  QVERIFY (script.contains (QStringLiteral ("usage.limits")));
+  QVERIFY (script.contains (QStringLiteral ("fiveHour")));
+  QVERIFY (!script.contains (QStringLiteral ("stats-section")));
+  QVERIFY (!script.contains (QStringLiteral ("nth-child")));
   QVERIFY (script.contains (QStringLiteral ("kimi-code")));
   QVERIFY (script.contains (QStringLiteral ("fiveHourBalanceText")));
   QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
@@ -288,8 +294,8 @@ ProviderRegistryTest::kimiCodeExtractorOmitsFieldsOnNull ()
       = registry.provider (QStringLiteral ("kimi-code"));
   const QString script = provider.extractorScript;
 
-  QVERIFY (script.contains (QStringLiteral ("if (weekly)")));
-  QVERIFY (script.contains (QStringLiteral ("if (fiveHour)")));
+  QVERIFY (script.contains (QStringLiteral ("if (parsed.weekly)")));
+  QVERIFY (script.contains (QStringLiteral ("if (parsed.fiveHour)")));
 
   QVERIFY (!script.contains (QStringLiteral ("fiveHourRemainingRatio: 0")));
   QVERIFY (!script.contains (QStringLiteral ("remainingRatio: 0")));
@@ -368,6 +374,28 @@ ProviderRegistryTest::webViewAcceptsTextOnlyResult ()
 }
 
 void
+ProviderRegistryTest::webPopupReturnsToStatusAfterAutoExtractionFailure ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype failedStart = qml.indexOf (
+      QStringLiteral ("item.extractionFailed.connect"));
+  QVERIFY (failedStart >= 0);
+
+  const qsizetype failedEnd = qml.indexOf (
+      QStringLiteral ("item.loginSucceeded.connect"), failedStart);
+  QVERIFY (failedEnd > failedStart);
+
+  const QString failedHandler = qml.mid (failedStart, failedEnd - failedStart);
+  QVERIFY (failedHandler.contains (QStringLiteral ("setProviderError")));
+  QVERIFY (failedHandler.contains (QStringLiteral ("item._wasAutoMode")));
+  QVERIFY (failedHandler.contains (QStringLiteral ("autoCloseTimer.start()")));
+}
+
+void
 ProviderRegistryTest::loginPageDetectionBlocksPrematureExtraction ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
@@ -406,6 +434,28 @@ ProviderRegistryTest::mainCppLoginGuardBlocksReload ()
   QVERIFY (cpp.contains (QStringLiteral ("onLoginPage && m_loginPhase == 0")));
   QVERIFY (cpp.contains (QStringLiteral ("onLoginPage)")));
   QVERIFY (cpp.contains (QStringLiteral ("QUrl(loginPath).path()")));
+}
+
+void
+ProviderRegistryTest::standaloneLoginPageProbesQuotaUrlBeforeWaiting ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString cpp = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype guardStart = cpp.indexOf (
+      QStringLiteral ("onLoginPage && m_loginPhase == 0"));
+  QVERIFY (guardStart >= 0);
+
+  const qsizetype guardEnd = cpp.indexOf (
+      QStringLiteral ("if (onLoginPage)"), guardStart);
+  QVERIFY (guardEnd > guardStart);
+
+  const QString guardBlock = cpp.mid (guardStart, guardEnd - guardStart);
+  QVERIFY (guardBlock.contains (QStringLiteral ("QTimer::singleShot")));
+  QVERIFY (guardBlock.contains (QStringLiteral ("quotaUrl")));
+  QVERIFY (guardBlock.contains (QStringLiteral ("setUrl(QUrl(quotaUrl))")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

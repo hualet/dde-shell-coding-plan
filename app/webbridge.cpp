@@ -52,7 +52,6 @@ void WebBridge::requestLogin(const QString &providerId)
 
 void WebBridge::finishLogin(const QString &providerId)
 {
-    m_model->refreshProvider(providerId);
     emit loginFinished(providerId);
 }
 
@@ -64,6 +63,11 @@ void WebBridge::setManualRatio(const QString &providerId, double ratio)
 void WebBridge::setWebViewResult(const QString &providerId, const QVariantMap &result)
 {
     m_model->setWebViewResult(providerId, result);
+}
+
+void WebBridge::setProviderError(const QString &providerId, const QString &message)
+{
+    m_model->setProviderError(providerId, message);
 }
 
 QVariantMap WebBridge::getProviderConfig(const QString &providerId) const

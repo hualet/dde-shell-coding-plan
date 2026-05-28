@@ -53,34 +53,109 @@ kimiCodeExtractorScript ()
   return QStringLiteral (R"JS(
 (function() {
   const metadata = %1;
-  var parsed = { weekly: null, fiveHour: null };
 
-  function readQuotaElement(selector) {
-    var el = document.querySelector(selector);
-    if (!el) return null;
-    var text = el.innerText || el.textContent || "";
-    var percentMatch = text.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
-    if (percentMatch) {
-      return {
-        ratio: Math.max(0, Math.min(100, Number(percentMatch[1]))) / 100,
-        text: percentMatch[0]
-      };
-    }
-    var numMatch = text.match(/(\d+(?:\.\d+)?)/);
-    if (numMatch) {
-      return { ratio: null, text: numMatch[0] };
-    }
-    return null;
+  function clampRatio(value) {
+    if (!Number.isFinite(value)) return -1;
+    return Math.max(0, Math.min(1, value));
   }
 
-  var weekly = readQuotaElement(
-    "#app > div > div.app > div > div > main > section.stats-section > div.stats-desktop > div:nth-child(1)"
-  );
-  var fiveHour = readQuotaElement(
-    "#app > div > div.app > div > div > main > section.stats-section > div.stats-desktop > div:nth-child(2)"
-  );
+  function percentText(ratio) {
+    if (!Number.isFinite(ratio) || ratio < 0) return "";
+    return Math.round(ratio * 100) + "%%";
+  }
 
-  if (!weekly && !fiveHour) {
+  function detailToQuota(detail) {
+    if (!detail) return null;
+    var used = Number(detail.used);
+    var limit = Number(detail.limit);
+    if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) {
+      return null;
+    }
+    var ratio = clampRatio(used / limit);
+    return {
+      ratio: ratio,
+      text: percentText(ratio),
+      used: used,
+      total: limit,
+      resetAt: detail.resetTime || ""
+    };
+  }
+
+  function readBillingUsage() {
+    var token = localStorage.getItem('access_token');
+    if (!token) return null;
+
+    var request = new XMLHttpRequest();
+    request.open(
+      "POST",
+      "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages",
+      false
+    );
+    request.setRequestHeader("content-type", "application/json");
+    request.setRequestHeader("authorization", "Bearer " + token);
+    request.setRequestHeader("x-msh-platform", "web");
+    request.setRequestHeader("x-msh-version", "1.0.0");
+    request.setRequestHeader("x-language", "zh-CN");
+    request.send(JSON.stringify({ scope: ["FEATURE_CODING"] }));
+
+    if (request.status < 200 || request.status >= 300) return null;
+
+    var payload = JSON.parse(request.responseText);
+    var usages = Array.isArray(payload.usages) ? payload.usages : [];
+    var usage = usages.find(function(item) {
+      return item && item.scope === "FEATURE_CODING";
+    }) || usages[0];
+
+    if (!usage) return null;
+
+    return {
+      weekly: detailToQuota(usage.detail),
+      fiveHour: detailToQuota(
+        Array.isArray(usage.limits) && usage.limits.length > 0
+          ? usage.limits[0].detail
+          : null
+      )
+    };
+  }
+
+  function readTextQuota(label) {
+    var text = document.body ? document.body.innerText : "";
+    var labelIndex = text.indexOf(label);
+    if (labelIndex < 0) return null;
+
+    var section = text.slice(labelIndex, labelIndex + 200);
+    var percentMatch = section.match(/(\d{1,3}(?:\.\d+)?)\s*%%/);
+    if (!percentMatch) return null;
+
+    var ratio = clampRatio(Number(percentMatch[1]) / 100);
+    return {
+      ratio: ratio,
+      text: percentMatch[0],
+      used: -1,
+      total: -1,
+      resetAt: ""
+    };
+  }
+
+  function readDomFallback() {
+    return {
+      weekly: readTextQuota("本周用量"),
+      fiveHour: readTextQuota("频限明细")
+    };
+  }
+
+  var parsed = null;
+  try {
+    parsed = readBillingUsage();
+  } catch (error) {
+    parsed = null;
+  }
+
+  if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
+    parsed = readDomFallback();
+  }
+
+  if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
     return {
       providerId: metadata.provider,
       status: "parse_error",
@@ -95,16 +170,26 @@ kimiCodeExtractorScript ()
     updatedAt: new Date().toISOString()
   };
 
-  if (weekly) {
-    result.remainingRatio = weekly.ratio !== null ? weekly.ratio : -1;
-    result.balanceText = weekly.text;
+  if (parsed.weekly) {
+    result.remainingRatio = parsed.weekly.ratio;
+    result.balanceText = parsed.weekly.text;
+    if (parsed.weekly.used >= 0) {
+      result.used = parsed.weekly.used;
+    }
+    if (parsed.weekly.total >= 0) {
+      result.total = parsed.weekly.total;
+    }
+    if (parsed.weekly.resetAt) {
+      result.resetAt = parsed.weekly.resetAt;
+    }
   }
-  if (fiveHour) {
-    result.fiveHourBalanceText = fiveHour.text;
-    result.fiveHourRemainingRatio = fiveHour.ratio !== null ? fiveHour.ratio : -1;
-    if (weekly === null && fiveHour.ratio !== null) {
-      result.remainingRatio = fiveHour.ratio;
-      result.balanceText = fiveHour.text;
+
+  if (parsed.fiveHour) {
+    result.fiveHourBalanceText = parsed.fiveHour.text;
+    result.fiveHourRemainingRatio = parsed.fiveHour.ratio;
+    if (!parsed.weekly) {
+      result.remainingRatio = parsed.fiveHour.ratio;
+      result.balanceText = parsed.fiveHour.text;
     }
   }
 
