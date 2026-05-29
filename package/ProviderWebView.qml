@@ -20,6 +20,7 @@ Item {
     property int _autoPhase: 0
     property string _preLoginUrl: ""
     property bool _wasAutoMode: false
+    readonly property bool wasAutoMode: _wasAutoMode
     property bool _loginSucceeded: false
     property int _extractionAttempts: 0
     property int _maxExtractionAttempts: 6
