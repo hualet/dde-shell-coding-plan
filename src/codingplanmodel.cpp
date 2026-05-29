@@ -18,7 +18,7 @@ namespace
 constexpr auto kSettingsOrganization = "deepin";
 constexpr auto kSettingsApplication = "dde-shell-coding-plan";
 constexpr auto kSnapshotsKey = "snapshots";
-constexpr int kRefreshIntervalMs = 30 * 60 * 1000;
+constexpr int kRefreshIntervalMs = 5 * 60 * 1000;
 
 SnapshotStatus
 statusFromString (const QString &status)
@@ -133,10 +133,7 @@ CodingPlanModel::tooltipText () const
 void
 CodingPlanModel::refreshAll ()
 {
-  for (const ProviderDefinition &provider : m_registry.providers ())
-    {
-      refreshProvider (provider.id);
-    }
+  emit backgroundRefreshRequested ();
 }
 
 void

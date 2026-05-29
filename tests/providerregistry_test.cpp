@@ -620,7 +620,7 @@ ProviderRegistryTest::webPopupReturnsToStatusAfterAutoExtractionFailure ()
 
   const QString failedHandler = qml.mid (failedStart, failedEnd - failedStart);
   QVERIFY (failedHandler.contains (QStringLiteral ("setProviderError")));
-  QVERIFY (failedHandler.contains (QStringLiteral ("item._wasAutoMode")));
+  QVERIFY (failedHandler.contains (QStringLiteral ("item.wasAutoMode")));
   QVERIFY (failedHandler.contains (QStringLiteral ("autoCloseTimer.start()")));
 }
 
@@ -687,10 +687,6 @@ ProviderRegistryTest::standaloneLoginPageProbesQuotaUrlBeforeWaiting ()
   QVERIFY (guardBlock.contains (QStringLiteral ("setUrl(QUrl(quotaUrl))")));
 }
 
-QTEST_MAIN (ProviderRegistryTest)
-
-#include "providerregistry_test.moc"
-
 void
 ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
 {
@@ -731,3 +727,7 @@ ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
   QVERIFY (qml.contains (QStringLiteral ("extractionFailed(message)")));
   QVERIFY (qml.contains (QStringLiteral ("_autoMode = false")));
 }
+
+QTEST_MAIN (ProviderRegistryTest)
+
+#include "providerregistry_test.moc"

@@ -43,6 +43,7 @@ public:
 signals:
   void snapshotsChanged ();
   void sessionCleared (const QString &providerId);
+  void backgroundRefreshRequested ();
 
 private:
   QuotaSnapshot createInitialSnapshot (const ProviderDefinition &provider) const;

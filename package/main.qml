@@ -21,6 +21,9 @@ AppletItem {
     property var selectedProvider: ({})
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
     property bool _reopenPopupAfterWebClose: false
+    property bool _pendingBgRefresh: false
+    property bool _bgRefreshActive: false
+    property var _bgRefreshQueue: []
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
@@ -98,11 +101,74 @@ AppletItem {
         webLoader.item.extractorScript = provider.extractorScript || ""
     }
 
+    function _cancelBgRefresh() {
+        root._bgRefreshActive = false
+        root._pendingBgRefresh = false
+        root._bgRefreshQueue = []
+        bgTimeoutTimer.stop()
+        bgLoader.active = false
+    }
+
+    function _startBgRefreshQueue() {
+        if (webPopup.popupVisible) {
+            root._pendingBgRefresh = true
+            return
+        }
+        var queue = []
+        var snapshots = root.quotaSnapshots
+        var providers = Applet.quota ? Applet.quota.providers : []
+        for (var i = 0; i < snapshots.length; ++i) {
+            var s = snapshots[i]
+            if (s.status === "ok" || s.status === "warning" || s.status === "exhausted") {
+                for (var j = 0; j < providers.length; ++j) {
+                    if (providers[j].id === s.providerId && providers[j].quotaUrl) {
+                        queue.push(s)
+                        break
+                    }
+                }
+            }
+        }
+        if (queue.length === 0) return
+        root._bgRefreshQueue = queue
+        root._bgRefreshActive = true
+        _processNextBgItem()
+    }
+
+    function _processNextBgItem() {
+        if (root._bgRefreshQueue.length === 0) {
+            root._bgRefreshActive = false
+            return
+        }
+        if (webPopup.popupVisible) {
+            root._pendingBgRefresh = true
+            root._bgRefreshActive = false
+            return
+        }
+        var snapshot = root._bgRefreshQueue.shift()
+        var provider = root.providerConfig(snapshot.providerId)
+        if (!provider.id || !provider.quotaUrl) {
+            _processNextBgItem()
+            return
+        }
+        bgLoader.providerId = snapshot.providerId
+        bgLoader.providerName = snapshot.providerName
+        bgLoader.providerConfigObj = provider
+        bgLoader.active = true
+        bgTimeoutTimer.start()
+    }
+
     PanelToolTip {
         id: toolTip
         text: Applet.quota ? Applet.quota.tooltipText : ""
         toolTipX: DockPanelPositioner.x
         toolTipY: DockPanelPositioner.y
+    }
+
+    Connections {
+        target: Applet.quota
+        function onBackgroundRefreshRequested() {
+            root._startBgRefreshQueue()
+        }
     }
 
     HoverHandler {
@@ -361,6 +427,13 @@ AppletItem {
         }
 
         onPopupVisibleChanged: {
+            if (webPopup.popupVisible && root._bgRefreshActive) {
+                root._cancelBgRefresh()
+            }
+            if (!webPopup.popupVisible && root._pendingBgRefresh) {
+                root._pendingBgRefresh = false
+                root._startBgRefreshQueue()
+            }
             if (!webPopup.popupVisible && root._reopenPopupAfterWebClose) {
                 root._reopenPopupAfterWebClose = false
                 popup.open()
@@ -474,13 +547,13 @@ AppletItem {
                         })
                         item.extracted.connect(function(result) {
                             Applet.quota.setWebViewResult(root.selectedProvider.providerId, result)
-                            if (item._wasAutoMode) {
+                            if (item.wasAutoMode) {
                                 autoCloseTimer.start()
                             }
                         })
                         item.extractionFailed.connect(function(message) {
                             Applet.quota.setProviderError(root.selectedProvider.providerId, message)
-                            if (item._wasAutoMode) {
+                            if (item.wasAutoMode) {
                                 autoCloseTimer.start()
                             }
                         })
@@ -493,6 +566,53 @@ AppletItem {
                     }
                 }
             }
+        }
+    }
+
+    Loader {
+        id: bgLoader
+        active: false
+        visible: false
+        width: 0
+        height: 0
+        property string providerId: ""
+        property string providerName: ""
+        property var providerConfigObj: ({})
+        source: "ProviderWebView.qml"
+
+        onLoaded: {
+            if (!item) return
+            var config = bgLoader.providerConfigObj
+            item.providerId = bgLoader.providerId
+            item.providerName = bgLoader.providerName
+            item.loginUrl = config.loginUrl || ""
+            item.quotaUrl = config.quotaUrl || ""
+            item.allowedOrigins = config.allowedOrigins || []
+            item.extractorScript = config.extractorScript || ""
+            item.extracted.connect(function(result) {
+                Applet.quota.setWebViewResult(bgLoader.providerId, result)
+                bgTimeoutTimer.stop()
+                bgLoader.active = false
+                root._processNextBgItem()
+            })
+            item.extractionFailed.connect(function(message) {
+                Applet.quota.setProviderError(bgLoader.providerId, message)
+                bgTimeoutTimer.stop()
+                bgLoader.active = false
+                root._processNextBgItem()
+            })
+            item.startAutoExtract()
+        }
+    }
+
+    Timer {
+        id: bgTimeoutTimer
+        interval: 60000
+        repeat: false
+        onTriggered: {
+            console.warn("[coding-plan] background refresh timeout")
+            bgLoader.active = false
+            root._processNextBgItem()
         }
     }
 
