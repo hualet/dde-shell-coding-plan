@@ -71,6 +71,17 @@ AppletItem {
         }
     }
 
+    function copyToClipboard(text) {
+        LP.Clipboard.text = text
+    }
+
+    Timer {
+        id: copyTimer
+        interval: 1500
+        property string tokenText: ""
+        onTriggered: tokenButton.text = qsTr("复制配对 Token")
+    }
+
     PanelToolTip {
         id: toolTip
         text: Applet.quota ? Applet.quota.tooltipText : ""
@@ -368,9 +379,19 @@ AppletItem {
                     }
 
                     Button {
-                        text: qsTr("配对信息")
+                        id: tokenButton
+                        text: qsTr("复制配对 Token")
                         Layout.fillWidth: true
-                        onClicked: tokenPopup.open()
+                        onClicked: {
+                            if (Applet.quota) {
+                                var tok = Applet.quota.extensionToken || ""
+                                if (tok.length > 0) {
+                                    root.copyToClipboard(tok)
+                                    text = qsTr("已复制")
+                                    copyTimer.start()
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -382,56 +403,6 @@ AppletItem {
                     color: "#8b949e"
                     font.pixelSize: 12
                 }
-            }
-        }
-    }
-
-    Popup {
-        id: tokenPopup
-        anchors.centerIn: parent
-        width: 360
-        padding: 16
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
-            Label {
-                text: qsTr("配对 Token")
-                font.pixelSize: 16
-                font.bold: true
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: qsTr("请将以下 Token 复制到浏览器扩展的设置页面中完成配对：")
-                wrapMode: Text.WordWrap
-                font.pixelSize: 13
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 40
-                radius: 6
-                color: Qt.rgba(0.9, 0.9, 0.9, 1)
-                border.width: 1
-                border.color: Qt.rgba(0.7, 0.7, 0.7, 1)
-
-                Label {
-                    anchors.centerIn: parent
-                    text: Applet.quota ? Applet.quota.extensionToken : ""
-                    font.family: "monospace"
-                    font.pixelSize: 14
-                    elide: Text.ElideRight
-                    width: parent.width - 16
-                    horizontalAlignment: Text.AlignHCenter
-                }
-            }
-
-            Button {
-                Layout.fillWidth: true
-                text: qsTr("关闭")
-                onClicked: tokenPopup.close()
             }
         }
     }
