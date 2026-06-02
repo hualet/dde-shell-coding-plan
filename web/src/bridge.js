@@ -1,3 +1,5 @@
+import { SnapshotStatus } from './bridge-types';
+
 const isQWebChannel = () => !!(window.qt && window.qt.webChannelTransport);
 
 let bridgePromise = null;
@@ -114,10 +116,10 @@ export async function setManualRatio(providerId, ratio) {
 
 export function isLoggedIn(snapshot) {
   if (!snapshot) return false;
-  return snapshot.status === 'ok'
-    || snapshot.status === 'warning'
-    || snapshot.status === 'exhausted'
-    || snapshot.status === 'authenticated';
+  return snapshot.status === SnapshotStatus.Ok
+    || snapshot.status === SnapshotStatus.Warning
+    || snapshot.status === SnapshotStatus.Exhausted
+    || snapshot.status === SnapshotStatus.Authenticated;
 }
 
 export { isQWebChannel, MOCK_PROVIDERS, MOCK_SNAPSHOTS };
