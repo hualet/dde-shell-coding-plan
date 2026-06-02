@@ -26,6 +26,10 @@ The plugin uses a WebSocket server (127.0.0.1:18765) to communicate with a Chrom
 
 Qt6, DTK6, Qt WebSockets, and DDE Shell development packages are required for a full build.
 
+## Required Verification
+
+After any code change, run the relevant compile and unit-test commands before handing off the work. For C++/Qt/QML changes, run `cmake -S . -B build`, `cmake --build build`, and `ctest --test-dir build --output-on-failure`. For Chrome Extension changes, there is no build step; validate affected files by loading `extension/` as an unpacked extension, and still run the C++ build/test commands when the change touches WebSocket protocol, provider contracts, or C++ integration. If an environment dependency prevents a command or manual check from running, report the exact command/check, failure reason, and remaining risk in the final handoff.
+
 ### Chrome Extension Development
 
 - Load `extension/` as an unpacked extension in `chrome://extensions` (developer mode).
