@@ -20,10 +20,6 @@ AppletItem {
     readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
     property var selectedProvider: ({})
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
-    property bool _reopenPopupAfterWebClose: false
-    property bool _pendingBgRefresh: false
-    property bool _bgRefreshActive: false
-    property var _bgRefreshQueue: []
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
@@ -69,92 +65,10 @@ AppletItem {
         return Math.round(ratio * 100) + "%"
     }
 
-    function openLoginCenter(provider) {
-        if (provider && provider.providerId) {
-            root.selectedProvider = provider
-        } else if (!root.selectedProvider.providerId && root.quotaSnapshots.length > 0) {
-            root.selectedProvider = root.quotaSnapshots[0]
+    function refreshAll() {
+        if (Applet.quota) {
+            Applet.quota.refreshAll()
         }
-
-        popup.close()
-        webPopup.open()
-        root.configureWebView()
-    }
-
-    function refreshSelectedProvider() {
-        if (!root.selectedProvider.providerId && root.quotaSnapshots.length > 0) {
-            root.selectedProvider = root.quotaSnapshots[0]
-        }
-        root.openLoginCenter(root.selectedProvider)
-    }
-
-    function configureWebView() {
-        if (!webLoader.item || !root.selectedProvider.providerId)
-            return
-
-        const provider = root.providerConfig(root.selectedProvider.providerId)
-        webLoader.item.providerId = root.selectedProvider.providerId
-        webLoader.item.providerName = root.selectedProvider.providerName
-        webLoader.item.loginUrl = provider.loginUrl || ""
-        webLoader.item.quotaUrl = provider.quotaUrl || ""
-        webLoader.item.allowedOrigins = provider.allowedOrigins || []
-        webLoader.item.extractorScript = provider.extractorScript || ""
-    }
-
-    function _cancelBgRefresh() {
-        root._bgRefreshActive = false
-        root._pendingBgRefresh = false
-        root._bgRefreshQueue = []
-        bgTimeoutTimer.stop()
-        bgLoader.active = false
-    }
-
-    function _startBgRefreshQueue() {
-        if (webPopup.popupVisible) {
-            root._pendingBgRefresh = true
-            return
-        }
-        var queue = []
-        var snapshots = root.quotaSnapshots
-        var providers = Applet.quota ? Applet.quota.providers : []
-        for (var i = 0; i < snapshots.length; ++i) {
-            var s = snapshots[i]
-            if (s.status === "ok" || s.status === "warning" || s.status === "exhausted") {
-                for (var j = 0; j < providers.length; ++j) {
-                    if (providers[j].id === s.providerId && providers[j].quotaUrl) {
-                        queue.push(s)
-                        break
-                    }
-                }
-            }
-        }
-        if (queue.length === 0) return
-        root._bgRefreshQueue = queue
-        root._bgRefreshActive = true
-        _processNextBgItem()
-    }
-
-    function _processNextBgItem() {
-        if (root._bgRefreshQueue.length === 0) {
-            root._bgRefreshActive = false
-            return
-        }
-        if (webPopup.popupVisible) {
-            root._pendingBgRefresh = true
-            root._bgRefreshActive = false
-            return
-        }
-        var snapshot = root._bgRefreshQueue.shift()
-        var provider = root.providerConfig(snapshot.providerId)
-        if (!provider.id || !provider.quotaUrl) {
-            _processNextBgItem()
-            return
-        }
-        bgLoader.providerId = snapshot.providerId
-        bgLoader.providerName = snapshot.providerName
-        bgLoader.providerConfigObj = provider
-        bgLoader.active = true
-        bgTimeoutTimer.start()
     }
 
     PanelToolTip {
@@ -167,7 +81,7 @@ AppletItem {
     Connections {
         target: Applet.quota
         function onBackgroundRefreshRequested() {
-            root._startBgRefreshQueue()
+            root.refreshAll()
         }
     }
 
@@ -205,7 +119,6 @@ AppletItem {
 
         onClicked: function(mouse) {
             popup.close()
-            webPopup.close()
             settingsMenuLoader.active = true
             settingsMenuLoader.item.open()
             mouse.accepted = true
@@ -246,18 +159,15 @@ AppletItem {
                     ctx.clearRect(0, 0, width, height)
                     const center = width / 2
 
-                    // Outer ring - weekly quota
                     const outerRadius = center - 3
                     const outerRatio = Math.max(0, Math.min(1, snapshot.remainingRatio || 0))
 
-                    // Inner ring - 5-hour quota
                     const innerRadius = center - 7
                     const innerRaw = snapshot.fiveHourRemainingRatio
                     const innerRatio = (innerRaw !== undefined && innerRaw !== null && innerRaw >= 0)
                         ? Math.max(0, Math.min(1, innerRaw))
                         : (snapshot.remainingRatio >= 0 ? Math.max(0, Math.min(1, snapshot.remainingRatio)) : 0)
 
-                    // Background arcs
                     ctx.lineWidth = 3
                     ctx.strokeStyle = "rgba(128, 128, 128, 0.24)"
                     ctx.beginPath()
@@ -269,7 +179,6 @@ AppletItem {
                     ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
                     ctx.stroke()
 
-                    // Colored arcs
                     const color = root.severityColor(snapshot.severity)
 
                     ctx.strokeStyle = color
@@ -341,6 +250,20 @@ AppletItem {
                         font.bold: true
                         Layout.fillWidth: true
                     }
+
+                    Label {
+                        visible: Applet.quota && Applet.quota.extensionConnected
+                        text: qsTr("已连接")
+                        color: "#28c76f"
+                        font.pixelSize: 12
+                    }
+
+                    Label {
+                        visible: !Applet.quota || !Applet.quota.extensionConnected
+                        text: qsTr("未连接")
+                        color: "#8b949e"
+                        font.pixelSize: 12
+                    }
                 }
 
                 Repeater {
@@ -360,12 +283,16 @@ AppletItem {
                                 anchors.margins: 9
                                 spacing: 7
 
-                                Label {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: modelData.providerName
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                    horizontalAlignment: Text.AlignHCenter
+
+                                    Label {
+                                        text: modelData.providerName
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
                                 }
 
                                 Item {
@@ -405,224 +332,161 @@ AppletItem {
                                         font.bold: true
                                     }
                                 }
-                            }
-                    }
-                }
-            }
-        }
-    }
-
-    PanelPopup {
-        id: webPopup
-        width: 900
-        height: 640
-        popupX: DockPanelPositioner.x
-        popupY: DockPanelPositioner.y
-
-        Component.onCompleted: {
-            DockPanelPositioner.bounding = Qt.binding(function () {
-                const point = root.mapToItem(null, root.width / 2, root.height / 2)
-                return Qt.rect(point.x, point.y, webPopup.width, webPopup.height)
-            })
-        }
-
-        onPopupVisibleChanged: {
-            if (webPopup.popupVisible && root._bgRefreshActive) {
-                root._cancelBgRefresh()
-            }
-            if (!webPopup.popupVisible && root._pendingBgRefresh) {
-                root._pendingBgRefresh = false
-                root._startBgRefreshQueue()
-            }
-            if (!webPopup.popupVisible && root._reopenPopupAfterWebClose) {
-                root._reopenPopupAfterWebClose = false
-                popup.open()
-            }
-        }
-
-        Control {
-            anchors.fill: parent
-            padding: 12
-
-            contentItem: RowLayout {
-                spacing: 12
-
-                ColumnLayout {
-                    Layout.preferredWidth: 250
-                    Layout.fillHeight: true
-                    spacing: 10
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Label {
-                            text: qsTr("Coding Plan")
-                            font.pixelSize: 17
-                            font.bold: true
-                            Layout.fillWidth: true
-                        }
-
-                        Button {
-                            text: qsTr("Close")
-                            onClicked: webPopup.popupVisible = false
-                        }
-                    }
-
-                    Repeater {
-                        model: root.quotaSnapshots
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            radius: 8
-                            color: modelData.providerId === root.selectedProvider.providerId
-                                   ? Qt.rgba(0.2, 0.45, 0.9, 0.16)
-                                   : "transparent"
-                            border.width: 1
-                            border.color: Qt.rgba(0.5, 0.5, 0.5, 0.22)
-                            implicitHeight: providerCard.implicitHeight + 18
-
-                            ColumnLayout {
-                                id: providerCard
-                                anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 6
 
                                 RowLayout {
                                     Layout.fillWidth: true
 
-                                    Label {
-                                        text: modelData.providerName
-                                        font.bold: true
+                                    Button {
+                                        text: qsTr("打开控制台")
                                         Layout.fillWidth: true
-                                        elide: Text.ElideRight
+                                        onClicked: {
+                                            if (Applet.quota)
+                                                Applet.quota.openConsole(modelData.providerId)
+                                        }
                                     }
 
-                                    Label {
-                                        text: modelData.status === "ok" ? qsTr("Signed in")
-                                             : modelData.status === "authenticated" ? qsTr("Authenticated")
-                                             : modelData.status === "parse_error" ? qsTr("Parse failed")
-                                             : qsTr("Login needed")
-                                        color: root.severityColor(modelData.severity)
+                                    Button {
+                                        text: qsTr("手动录入")
+                                        Layout.fillWidth: true
+                                        onClicked: {
+                                            root.selectedProvider = modelData
+                                            manualInputPopup.open()
+                                        }
                                     }
                                 }
-
-                                Label {
-                                    Layout.fillWidth: true
-                                    text: modelData.remainingRatio >= 0
-                                          ? qsTr("%1 remaining").arg(Math.round(modelData.remainingRatio * 100) + "%")
-                                          : modelData.message
-                                    wrapMode: Text.WordWrap
-                                    opacity: 0.8
-                                }
                             }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    root.selectedProvider = modelData
-                                    root.configureWebView()
-                                }
-                            }
-                        }
-                    }
-
-                    Button {
-                        Layout.fillWidth: true
-                        text: qsTr("Refresh All")
-                        onClicked: root.refreshSelectedProvider()
                     }
                 }
 
-                Loader {
-                    id: webLoader
+                RowLayout {
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    active: webPopup.popupVisible
-                    source: "ProviderWebView.qml"
 
-                    onLoaded: {
-                        root.configureWebView()
-                        item.closeRequested.connect(function() {
-                            webPopup.popupVisible = false
-                        })
-                        item.extracted.connect(function(result) {
-                            Applet.quota.setWebViewResult(root.selectedProvider.providerId, result)
-                            if (item.wasAutoMode) {
-                                autoCloseTimer.start()
-                            }
-                        })
-                        item.extractionFailed.connect(function(message) {
-                            Applet.quota.setProviderError(root.selectedProvider.providerId, message)
-                            if (item.wasAutoMode) {
-                                autoCloseTimer.start()
-                            }
-                        })
-                        item.loginSucceeded.connect(function(providerId) {
-                            Applet.quota.setProviderAuthenticated(providerId)
-                        })
-                        if (root.selectedProvider.providerId) {
-                            item.startAutoExtract()
-                        }
+                    Button {
+                        text: qsTr("刷新全部")
+                        Layout.fillWidth: true
+                        onClicked: root.refreshAll()
                     }
+
+                    Button {
+                        text: qsTr("配对信息")
+                        Layout.fillWidth: true
+                        onClicked: tokenPopup.open()
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: Applet.quota && !Applet.quota.extensionConnected
+                    text: qsTr("请安装浏览器扩展并输入配对 Token 以连接。")
+                    wrapMode: Text.WordWrap
+                    color: "#8b949e"
+                    font.pixelSize: 12
                 }
             }
         }
     }
 
-    Loader {
-        id: bgLoader
-        active: false
-        visible: false
-        width: 0
-        height: 0
-        property string providerId: ""
-        property string providerName: ""
-        property var providerConfigObj: ({})
-        source: "ProviderWebView.qml"
+    Popup {
+        id: tokenPopup
+        anchors.centerIn: parent
+        width: 360
+        padding: 16
 
-        onLoaded: {
-            if (!item) return
-            var config = bgLoader.providerConfigObj
-            item.providerId = bgLoader.providerId
-            item.providerName = bgLoader.providerName
-            item.loginUrl = config.loginUrl || ""
-            item.quotaUrl = config.quotaUrl || ""
-            item.allowedOrigins = config.allowedOrigins || []
-            item.extractorScript = config.extractorScript || ""
-            item.extracted.connect(function(result) {
-                Applet.quota.setWebViewResult(bgLoader.providerId, result)
-                bgTimeoutTimer.stop()
-                bgLoader.active = false
-                root._processNextBgItem()
-            })
-            item.extractionFailed.connect(function(message) {
-                Applet.quota.setProviderError(bgLoader.providerId, message)
-                bgTimeoutTimer.stop()
-                bgLoader.active = false
-                root._processNextBgItem()
-            })
-            item.startAutoExtract()
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Label {
+                text: qsTr("配对 Token")
+                font.pixelSize: 16
+                font.bold: true
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("请将以下 Token 复制到浏览器扩展的设置页面中完成配对：")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 40
+                radius: 6
+                color: Qt.rgba(0.9, 0.9, 0.9, 1)
+                border.width: 1
+                border.color: Qt.rgba(0.7, 0.7, 0.7, 1)
+
+                Label {
+                    anchors.centerIn: parent
+                    text: Applet.quota ? Applet.quota.extensionToken : ""
+                    font.family: "monospace"
+                    font.pixelSize: 14
+                    elide: Text.ElideRight
+                    width: parent.width - 16
+                    horizontalAlignment: Text.AlignHCenter
+                }
+            }
+
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("关闭")
+                onClicked: tokenPopup.close()
+            }
         }
     }
 
-    Timer {
-        id: bgTimeoutTimer
-        interval: 60000
-        repeat: false
-        onTriggered: {
-            console.warn("[coding-plan] background refresh timeout")
-            bgLoader.active = false
-            root._processNextBgItem()
-        }
-    }
+    Popup {
+        id: manualInputPopup
+        anchors.centerIn: parent
+        width: 300
+        padding: 16
 
-    Timer {
-        id: autoCloseTimer
-        interval: 800
-        repeat: false
-        onTriggered: {
-            root._reopenPopupAfterWebClose = true
-            webPopup.popupVisible = false
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+
+            Label {
+                text: qsTr("手动录入额度")
+                font.pixelSize: 16
+                font.bold: true
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("输入剩余百分比 (0-100)：")
+                font.pixelSize: 13
+            }
+
+            SpinBox {
+                id: manualSpinBox
+                Layout.fillWidth: true
+                from: 0
+                to: 100
+                value: 50
+                editable: true
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                Button {
+                    text: qsTr("确定")
+                    Layout.fillWidth: true
+                    onClicked: {
+                        if (Applet.quota && root.selectedProvider.providerId) {
+                            Applet.quota.setManualRatio(root.selectedProvider.providerId, manualSpinBox.value / 100)
+                        }
+                        manualInputPopup.close()
+                    }
+                }
+
+                Button {
+                    text: qsTr("取消")
+                    Layout.fillWidth: true
+                    onClicked: manualInputPopup.close()
+                }
+            }
         }
     }
 }

@@ -12,7 +12,7 @@
 
 enum class SourceType
 {
-  WebView,
+  BrowserExt,
   OfficialApi,
   Manual,
   ConsoleLink,
@@ -43,19 +43,16 @@ struct ProviderDefinition
 {
   QString id;
   QString name;
-  SourceType sourceType = SourceType::WebView;
+  SourceType sourceType = SourceType::BrowserExt;
   QString loginUrl;
-  QString quotaUrl;
   QString consoleUrl;
-  QStringList allowedOrigins;
-  QString extractorScript;
 };
 
 struct QuotaSnapshot
 {
   QString providerId;
   QString providerName;
-  SourceType source = SourceType::WebView;
+  SourceType source = SourceType::BrowserExt;
   SnapshotStatus status = SnapshotStatus::Unsupported;
   double remainingRatio = -1.0;
   double fiveHourRemainingRatio = -1.0;
