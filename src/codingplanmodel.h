@@ -10,6 +10,9 @@
 #include <QTimer>
 #include <QVariantList>
 
+class WebSocketServer;
+class BrowserExtProvider;
+
 class CodingPlanModel : public QObject
 {
   Q_OBJECT
@@ -17,6 +20,8 @@ class CodingPlanModel : public QObject
   Q_PROPERTY (QVariantList snapshots READ snapshots NOTIFY snapshotsChanged)
   Q_PROPERTY (bool hasSubscriptions READ hasSubscriptions NOTIFY snapshotsChanged)
   Q_PROPERTY (QString tooltipText READ tooltipText NOTIFY snapshotsChanged)
+  Q_PROPERTY (bool extensionConnected READ extensionConnected NOTIFY extensionStatusChanged)
+  Q_PROPERTY (QString extensionToken READ extensionToken CONSTANT)
 
 public:
   explicit CodingPlanModel (QObject *parent = nullptr);
@@ -25,6 +30,8 @@ public:
   QVariantList snapshots () const;
   bool hasSubscriptions () const;
   QString tooltipText () const;
+  bool extensionConnected () const;
+  QString extensionToken () const;
 
   Q_INVOKABLE void refreshAll ();
   Q_INVOKABLE void refreshProvider (const QString &providerId);
@@ -32,18 +39,28 @@ public:
   Q_INVOKABLE void openLogin (const QString &providerId);
   Q_INVOKABLE void clearSession (const QString &providerId);
   Q_INVOKABLE void setManualRatio (const QString &providerId, double ratio);
-  Q_INVOKABLE void setWebViewResult (const QString &providerId,
-                                       const QVariantMap &result);
+  Q_INVOKABLE void setBrowserExtResult (const QString &providerId,
+                                         const QVariantMap &result);
   Q_INVOKABLE void setProviderError (const QString &providerId,
-                                      const QString &message);
+                                       const QString &message);
   Q_INVOKABLE void setProviderAuthenticated (const QString &providerId);
 
   void watchExternalChanges ();
+
+  void setWebSocketServer (WebSocketServer *server);
 
 signals:
   void snapshotsChanged ();
   void sessionCleared (const QString &providerId);
   void backgroundRefreshRequested ();
+  void extensionStatusChanged ();
+
+private slots:
+  void onRefreshCompleted (const QString &providerId,
+                           const QuotaSnapshot &snapshot);
+  void onRefreshFailed (const QString &providerId,
+                        const QString &message);
+  void onExtensionStatusChanged (bool connected);
 
 private:
   QuotaSnapshot createInitialSnapshot (const ProviderDefinition &provider) const;
@@ -56,4 +73,6 @@ private:
   QTimer m_refreshTimer;
   QFileSystemWatcher *m_settingsWatcher = nullptr;
   QTimer m_debounceTimer;
+  WebSocketServer *m_wsServer = nullptr;
+  BrowserExtProvider *m_browserExtProvider = nullptr;
 };

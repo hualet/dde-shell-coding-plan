@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DDE Coding Plan</title>
+<style>
+  body {
+    width: 320px;
+    min-height: 200px;
+    margin: 0;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+    color: #333;
+  }
+  h2 { margin: 0 0 12px 0; font-size: 16px; }
+  .status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+  }
+  .status-dot.connected { background: #28c76f; }
+  .status-dot.disconnected { background: #8b949e; }
+  .section { margin-bottom: 12px; }
+  label { display: block; margin-bottom: 4px; font-weight: 500; }
+  input[type="text"] {
+    width: 100%; box-sizing: border-box; padding: 8px;
+    border: 1px solid #ccc; border-radius: 6px; font-size: 13px;
+  }
+  button {
+    padding: 8px 16px; border: none; border-radius: 6px;
+    cursor: pointer; font-size: 13px;
+  }
+  .btn-primary { background: #1976d2; color: white; }
+  .btn-secondary { background: #f0f0f0; color: #333; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .info { color: #666; font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h2>DDE Coding Plan</h2>
+
+<div class="status">
+  <div class="status-dot disconnected" id="statusDot"></div>
+  <span id="statusText">未连接</span>
+</div>
+
+<div class="section">
+  <label for="tokenInput">配对 Token</label>
+  <input type="text" id="tokenInput" placeholder="粘贴 DDE Shell 插件显示的 Token">
+</div>
+
+<div class="actions">
+  <button class="btn-primary" id="saveBtn">保存并连接</button>
+  <button class="btn-secondary" id="refreshBtn">手动刷新</button>
+</div>
+
+<div class="info" id="lastRefresh"></div>
+
+<script src="popup.js" type="module"></script>
+</body>
+</html>

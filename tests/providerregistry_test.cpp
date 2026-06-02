@@ -11,40 +11,43 @@ class ProviderRegistryTest : public QObject
   Q_OBJECT
 
 private slots:
-  void builtInWebViewProvidersCoverMvpPlatforms ();
+  void builtInBrowserExtProvidersCoverMvpPlatforms ();
   void snapshotStatusMapsToPanelSeverity ();
-  void panelQmlLeftClickOpensStatusPopupWithoutWebEngine ();
+  void panelQmlLeftClickOpensStatusPopup ();
   void panelQmlRightClickOpensSettingsMenu ();
   void appletLaunchesStandaloneSettingsWindow ();
-  void standaloneAppSourceFilesExist ();
-  void webViewsSuppressExpectedThirdPartyConsoleNoise ();
-  void standaloneRetriesQuotaExtractionWhilePageHydrates ();
-  void standaloneRefreshTriggersWebViewExtraction ();
-  void webPopupRetriesQuotaExtractionWhilePageHydrates ();
-  void panelRefreshOpensWebViewExtraction ();
-  void reactFrontendEntryExists ();
   void codexProviderUrlsMatchAnalyticsUsage ();
-  void codexExtractorReadsAnalyticsUsageText ();
-  void reactFallbackProvidersMatchBuiltInRegistry ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
-  void kimiCodeExtractorReadsBillingUsageApi ();
   void glmCodingProviderUrlsMatchCodingPlanUsage ();
-  void glmCodingExtractorReadsQuotaLimitApi ();
   void kimiCodeDualQuotaSnapshotContract ();
   void fiveHourDefaultIsNegativeOne ();
-  void kimiCodeExtractorOmitsFieldsOnNull ();
   void fiveHourMissingFieldStaysNegativeOne ();
   void fiveHourQuotaPercentFallsBackToText ();
-  void webViewAcceptsTextOnlyResult ();
-  void webPopupReturnsToStatusAfterAutoExtractionFailure ();
-  void loginPageDetectionBlocksPrematureExtraction ();
-  void mainCppLoginGuardBlocksReload ();
-  void standaloneLoginPageProbesQuotaUrlBeforeWaiting ();
-  void nullResultDoesNotCrashAndEntersFailureCallback ();
+  void browserExtResultParsesCorrectly ();
+  void sourceTypeIsBrowserExt ();
+  void panelQmlShowsExtensionConnectionStatus ();
+  void panelQmlHasManualInput ();
+  void panelQmlHasTokenDisplay ();
+  void extensionManifestExists ();
+  void extensionServiceWorkerExists ();
+  void extensionProvidersExist ();
+  void extensionSharedProtocolExists ();
+  void websocketServerHeaderExists ();
+  void websocketServerCppExists ();
+  void websocketServerHasHeartbeat ();
+  void websocketServerHasTokenPermissions ();
+  void websocketServerOldConnectionClose ();
+  void browserExtProviderHeaderExists ();
+  void browserExtProviderCppExists ();
+  void cmakeUsesWebSockets ();
+  void cmakeRemovesWebEngine ();
+  void providerDefinitionFieldsCleaned ();
+  void protocolProviderIdConsistency ();
+  void modelMigratesWebviewSnapshots ();
 };
 
 void
-ProviderRegistryTest::builtInWebViewProvidersCoverMvpPlatforms ()
+ProviderRegistryTest::builtInBrowserExtProvidersCoverMvpPlatforms ()
 {
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
 
@@ -57,11 +60,9 @@ ProviderRegistryTest::builtInWebViewProvidersCoverMvpPlatforms ()
   for (const QString &providerId : providerIds)
     {
       const ProviderDefinition provider = registry.provider (providerId);
-      QCOMPARE (provider.sourceType, SourceType::WebView);
+      QCOMPARE (provider.sourceType, SourceType::BrowserExt);
       QVERIFY (!provider.loginUrl.isEmpty ());
-      QVERIFY (!provider.quotaUrl.isEmpty ());
       QVERIFY (!provider.consoleUrl.isEmpty ());
-      QVERIFY (!provider.allowedOrigins.isEmpty ());
     }
 }
 
@@ -85,7 +86,7 @@ ProviderRegistryTest::snapshotStatusMapsToPanelSeverity ()
 }
 
 void
-ProviderRegistryTest::panelQmlLeftClickOpensStatusPopupWithoutWebEngine ()
+ProviderRegistryTest::panelQmlLeftClickOpensStatusPopup ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
@@ -93,33 +94,13 @@ ProviderRegistryTest::panelQmlLeftClickOpensStatusPopupWithoutWebEngine ()
   const QString qml = QString::fromUtf8 (file.readAll ());
   QVERIFY (qml.contains (
       QStringLiteral ("useClassicTaskbarLayout: Panel.itemAlignment === Dock.LeftAlignment")));
-  QVERIFY (qml.contains (
-      QStringLiteral ("dockOrder: useClassicTaskbarLayout ? 21 : 10")));
-  QVERIFY (qml.contains (QStringLiteral ("function openLoginCenter")));
   QVERIFY (qml.contains (QStringLiteral ("TapHandler")));
   QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.LeftButton")));
   QVERIFY (qml.contains (QStringLiteral ("onTapped:")));
   QVERIFY (qml.contains (QStringLiteral ("popup.open()")));
-  QVERIFY (qml.contains (QStringLiteral ("webPopup.open()")));
-  QVERIFY (!qml.contains (QStringLiteral (
-      "Panel.requestClosePopup()\n                root.openLoginCenter()")));
-  QVERIFY (!qml.contains (QStringLiteral ("webPopup.popupVisible = true")));
-  QVERIFY (!qml.contains (QStringLiteral (
-      "MouseArea {\n        anchors.fill: parent\n        onClicked: root.openLoginCenter()")));
-
-  const qsizetype popupStart = qml.indexOf (QStringLiteral ("id: popup"));
-  const qsizetype webPopupStart = qml.indexOf (QStringLiteral ("id: webPopup"));
-  QVERIFY (popupStart >= 0);
-  QVERIFY (webPopupStart > popupStart);
-
-  const QString statusPopup = qml.mid (popupStart, webPopupStart - popupStart);
-  QVERIFY (statusPopup.contains (QStringLiteral ("5小时额度")));
-  QVERIFY (statusPopup.contains (QStringLiteral ("周额度")));
-  QVERIFY (statusPopup.contains (QStringLiteral ("anchors.centerIn: parent")));
-  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Refresh\")")));
-  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Login\")")));
-  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Console\")")));
-  QVERIFY (!statusPopup.contains (QStringLiteral ("text: qsTr(\"Manual 50%\")")));
+  QVERIFY (!qml.contains (QStringLiteral ("import QtWebEngine")));
+  QVERIFY (!qml.contains (QStringLiteral ("WebEngineView")));
+  QVERIFY (!qml.contains (QStringLiteral ("WebEngineProfile")));
 }
 
 void
@@ -149,159 +130,6 @@ ProviderRegistryTest::appletLaunchesStandaloneSettingsWindow ()
   QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
   const QString sourceContent = QString::fromUtf8 (source.readAll ());
   QVERIFY (sourceContent.contains (QStringLiteral ("QProcess::startDetached")));
-  QVERIFY (sourceContent.contains (QStringLiteral ("/usr/bin/dde-coding-plan")));
-  QVERIFY (sourceContent.contains (QStringLiteral ("dde-coding-plan")));
-}
-
-void
-ProviderRegistryTest::standaloneAppSourceFilesExist ()
-{
-  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (mainCpp.exists (), "app/main.cpp should exist");
-  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), "app/main.cpp should be readable");
-
-  QFile webbridge (QStringLiteral (SOURCE_DIR "/app/webbridge.h"));
-  QVERIFY2 (webbridge.exists (), "app/webbridge.h should exist");
-
-  const QString content = QString::fromUtf8 (mainCpp.readAll ());
-  QVERIFY (content.contains (QStringLiteral ("QWebEngineView")));
-  QVERIFY (content.contains (QStringLiteral ("QWebChannel")));
-  QVERIFY (content.contains (QStringLiteral ("WebBridge")));
-  QVERIFY (content.contains (QStringLiteral ("DMainWindow")));
-  QVERIFY (content.contains (QStringLiteral ("runJavaScript")));
-  QVERIFY (content.contains (QStringLiteral ("allowedOrigins")));
-  QVERIFY (content.contains (QStringLiteral ("setWebViewResult")));
-  QVERIFY (content.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
-  QVERIFY (content.contains (QStringLiteral ("/usr/share/dde-coding-plan/web")));
-  QVERIFY (!content.contains (QStringLiteral ("qrc:/web/index.html")));
-  QVERIFY (!content.contains (QStringLiteral ("loadTranslator()")));
-}
-
-void
-ProviderRegistryTest::webViewsSuppressExpectedThirdPartyConsoleNoise ()
-{
-  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
-  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
-
-  QVERIFY (cpp.contains (QStringLiteral ("FilteringWebEnginePage")));
-  QVERIFY (cpp.contains (QStringLiteral ("javaScriptConsoleMessage")));
-  QVERIFY (cpp.contains (QStringLiteral ("DialogContent` requires a `DialogTitle")));
-  QVERIFY (cpp.contains (QStringLiteral ("Found a 'popover' attribute with an invalid value")));
-  QVERIFY (cpp.contains (QStringLiteral ("RequestError: Failed to fetch")));
-  QVERIFY (cpp.contains (QStringLiteral ("Failed to fetch")));
-  QVERIFY (cpp.contains (QStringLiteral ("DOMException")));
-  QVERIFY (cpp.contains (QStringLiteral ("RecoverableError: Minified React error #418")));
-
-  QFile providerWebView (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
-  QVERIFY2 (providerWebView.open (QIODevice::ReadOnly),
-            qPrintable (providerWebView.errorString ()));
-  const QString qml = QString::fromUtf8 (providerWebView.readAll ());
-
-  QVERIFY (qml.contains (QStringLiteral ("function _isExpectedConsoleNoise")));
-  QVERIFY (qml.contains (QStringLiteral ("onJavaScriptConsoleMessage")));
-  QVERIFY (qml.contains (QStringLiteral ("DialogContent` requires a `DialogTitle")));
-  QVERIFY (qml.contains (QStringLiteral ("RequestError: Failed to fetch")));
-  QVERIFY (qml.contains (QStringLiteral ("Failed to fetch")));
-  QVERIFY (qml.contains (QStringLiteral ("DOMException")));
-  QVERIFY (qml.contains (QStringLiteral ("RecoverableError: Minified React error #418")));
-}
-
-void
-ProviderRegistryTest::standaloneRetriesQuotaExtractionWhilePageHydrates ()
-{
-  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
-
-  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
-
-  QVERIFY (cpp.contains (QStringLiteral ("runExtractorWithRetry")));
-  QVERIFY (cpp.contains (QStringLiteral ("m_extractionAttempts")));
-  QVERIFY (cpp.contains (QStringLiteral ("maxExtractionAttempts")));
-  QVERIFY (cpp.contains (QStringLiteral ("QTimer::singleShot(1200")));
-  QVERIFY (cpp.contains (QStringLiteral ("status")));
-  QVERIFY (cpp.contains (QStringLiteral ("ok")));
-}
-
-void
-ProviderRegistryTest::standaloneRefreshTriggersWebViewExtraction ()
-{
-  QFile bridgeHeader (QStringLiteral (SOURCE_DIR "/app/webbridge.h"));
-  QVERIFY2 (bridgeHeader.open (QIODevice::ReadOnly),
-            qPrintable (bridgeHeader.errorString ()));
-  const QString header = QString::fromUtf8 (bridgeHeader.readAll ());
-  QVERIFY (header.contains (QStringLiteral ("refreshAllRequested")));
-
-  QFile bridgeSource (QStringLiteral (SOURCE_DIR "/app/webbridge.cpp"));
-  QVERIFY2 (bridgeSource.open (QIODevice::ReadOnly),
-            qPrintable (bridgeSource.errorString ()));
-  const QString bridge = QString::fromUtf8 (bridgeSource.readAll ());
-  QVERIFY (bridge.contains (QStringLiteral ("emit refreshAllRequested()")));
-  QVERIFY (bridge.contains (QStringLiteral ("emit loginPageRequested(providerId, quotaUrl)")));
-
-  QFile mainCpp (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (mainCpp.open (QIODevice::ReadOnly), qPrintable (mainCpp.errorString ()));
-  const QString cpp = QString::fromUtf8 (mainCpp.readAll ());
-  QVERIFY (cpp.contains (QStringLiteral ("onRefreshAllRequested")));
-  QVERIFY (cpp.contains (QStringLiteral ("refreshNextProvider")));
-  QVERIFY (cpp.contains (QStringLiteral ("m_refreshQueue")));
-  QVERIFY (cpp.contains (QStringLiteral ("onLoginPageRequested(providerId, quotaUrl)")));
-}
-
-void
-ProviderRegistryTest::webPopupRetriesQuotaExtractionWhilePageHydrates ()
-{
-  QFile providerWebView (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
-  QVERIFY2 (providerWebView.open (QIODevice::ReadOnly),
-            qPrintable (providerWebView.errorString ()));
-
-  const QString qml = QString::fromUtf8 (providerWebView.readAll ());
-
-  QVERIFY (qml.contains (QStringLiteral ("property int _extractionAttempts")));
-  QVERIFY (qml.contains (QStringLiteral ("property int _maxExtractionAttempts")));
-  QVERIFY (qml.contains (QStringLiteral ("id: extractionRetryTimer")));
-  QVERIFY (qml.contains (QStringLiteral ("_scheduleExtractionRetry")));
-  QVERIFY (qml.contains (QStringLiteral ("_finishExtractionFailure")));
-}
-
-void
-ProviderRegistryTest::panelRefreshOpensWebViewExtraction ()
-{
-  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString qml = QString::fromUtf8 (file.readAll ());
-  QVERIFY (qml.contains (QStringLiteral ("function refreshSelectedProvider")));
-  QVERIFY (qml.contains (QStringLiteral ("root.openLoginCenter(root.selectedProvider)")));
-  QVERIFY (qml.contains (QStringLiteral ("onClicked: root.refreshSelectedProvider()")));
-  QVERIFY (!qml.contains (QStringLiteral (
-      "text: qsTr(\"Refresh All\")\n                        onClicked: Applet.quota.refreshAll()")));
-}
-
-void
-ProviderRegistryTest::reactFrontendEntryExists ()
-{
-  QFile indexHtml (QStringLiteral (SOURCE_DIR "/web/index.html"));
-  QVERIFY2 (indexHtml.open (QIODevice::ReadOnly), "web/index.html should be readable");
-  const QString indexContent = QString::fromUtf8 (indexHtml.readAll ());
-  QVERIFY (indexContent.contains (
-      QStringLiteral ("./qwebchannel.js")));
-
-  QFile packageJson (QStringLiteral (SOURCE_DIR "/web/package.json"));
-  QVERIFY2 (packageJson.open (QIODevice::ReadOnly), "web/package.json should be readable");
-
-  const QString content = QString::fromUtf8 (packageJson.readAll ());
-  QVERIFY (content.contains (QStringLiteral ("@mui/material")));
-  QVERIFY (content.contains (QStringLiteral ("react")));
-  QVERIFY (content.contains (QStringLiteral ("react-router-dom")));
-
-  QFile cmakeLists (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
-  QVERIFY2 (cmakeLists.open (QIODevice::ReadOnly), "CMakeLists.txt should be readable");
-
-  const QString cmake = QString::fromUtf8 (cmakeLists.readAll ());
-  QVERIFY (cmake.contains (QStringLiteral ("CODING_PLAN_WEB_DIR")));
-  QVERIFY (cmake.contains (QStringLiteral ("install(")));
-  QVERIFY (cmake.contains (QStringLiteral ("web/dist/")));
 }
 
 void
@@ -314,66 +142,10 @@ ProviderRegistryTest::codexProviderUrlsMatchAnalyticsUsage ()
 
   QCOMPARE (provider.loginUrl,
             QStringLiteral ("https://chatgpt.com/auth/login"));
-  QCOMPARE (provider.quotaUrl,
-            QStringLiteral (
-                "https://chatgpt.com/codex/cloud/settings/analytics#usage"));
   QCOMPARE (provider.consoleUrl,
             QStringLiteral (
                 "https://chatgpt.com/codex/cloud/settings/analytics#usage"));
-
-  QVERIFY (provider.allowedOrigins.contains (
-      QStringLiteral ("https://chatgpt.com")));
-  QCOMPARE (provider.sourceType, SourceType::WebView);
-  QVERIFY (!provider.extractorScript.isEmpty ());
-}
-
-void
-ProviderRegistryTest::codexExtractorReadsAnalyticsUsageText ()
-{
-  const ProviderRegistry registry = ProviderRegistry::createDefault ();
-  const ProviderDefinition provider = registry.provider (QStringLiteral ("codex"));
-
-  const QString script = provider.extractorScript;
-
-  QVERIFY (script.contains (QStringLiteral ("codex")));
-  QVERIFY (script.contains (QStringLiteral ("5\\s*小时")));
-  QVERIFY (script.contains (QStringLiteral ("每周|周")));
-  QVERIFY (script.contains (QStringLiteral ("％")));
-  QVERIFY (script.contains (QStringLiteral ("normalizeText")));
-  QVERIFY (script.contains (QStringLiteral ("percentValueFromLine")));
-  QVERIFY (script.contains (QStringLiteral ("offset <= 6")));
-  QVERIFY (script.contains (QStringLiteral ("quotaAfterLabel")));
-  QVERIFY (script.contains (QStringLiteral ("valueGroupIndex")));
-  QVERIFY (script.contains (QStringLiteral ("readableTextFromNodes")));
-  QVERIFY (script.contains (QStringLiteral ("createTreeWalker")));
-  QVERIFY (script.contains (QStringLiteral ("NodeFilter.SHOW_TEXT")));
-  QVERIFY (!script.contains (QStringLiteral ("makeQuota(remainingMatches")));
-  QVERIFY (script.contains (QStringLiteral ("textLength")));
-  QVERIFY (script.contains (QStringLiteral ("excerpt")));
-  QVERIFY (script.contains (QStringLiteral ("location.pathname")));
-  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("readTextQuota")));
-  QVERIFY (script.contains (QStringLiteral ("parse_error")));
-  QVERIFY (!script.contains (QStringLiteral ("1 - usedRatio")));
-}
-
-void
-ProviderRegistryTest::reactFallbackProvidersMatchBuiltInRegistry ()
-{
-  QFile file (QStringLiteral (SOURCE_DIR "/web/src/bridge.js"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString bridge = QString::fromUtf8 (file.readAll ());
-
-  QVERIFY (bridge.contains (QStringLiteral (
-      "https://chatgpt.com/codex/cloud/settings/analytics#usage")));
-  QVERIFY (!bridge.contains (QStringLiteral ("https://chatgpt.com/#settings/usage")));
-  QVERIFY (bridge.contains (QStringLiteral (
-      "https://bigmodel.cn/coding-plan/personal/usage")));
-  QVERIFY (!bridge.contains (QStringLiteral ("https://chatglm.cn/login")));
-  QVERIFY (!bridge.contains (QStringLiteral (
-      "https://open.bigmodel.cn/usercenter/overview")));
+  QCOMPARE (provider.sourceType, SourceType::BrowserExt);
 }
 
 void
@@ -387,43 +159,9 @@ ProviderRegistryTest::kimiCodeProviderUrlsMatchCodeConsole ()
 
   QCOMPARE (provider.loginUrl,
             QStringLiteral ("https://www.kimi.com/code/"));
-  QCOMPARE (provider.quotaUrl,
-            QStringLiteral ("https://www.kimi.com/code/console"));
   QCOMPARE (provider.consoleUrl,
             QStringLiteral ("https://www.kimi.com/code/console"));
-
-  QVERIFY (provider.allowedOrigins.contains (
-      QStringLiteral ("https://www.kimi.com")));
-  QCOMPARE (provider.sourceType, SourceType::WebView);
-  QVERIFY (!provider.extractorScript.isEmpty ());
-}
-
-void
-ProviderRegistryTest::kimiCodeExtractorReadsBillingUsageApi ()
-{
-  const ProviderRegistry registry = ProviderRegistry::createDefault ();
-  const ProviderDefinition provider
-      = registry.provider (QStringLiteral ("kimi-code"));
-
-  const QString script = provider.extractorScript;
-
-  QVERIFY (script.contains (QStringLiteral (
-      "kimi.gateway.billing.v1.BillingService/GetUsages")));
-  QVERIFY (script.contains (QStringLiteral ("FEATURE_CODING")));
-  QVERIFY (script.contains (QStringLiteral ("localStorage.getItem('access_token')")));
-  QVERIFY (script.contains (QStringLiteral ("usage.detail")));
-  QVERIFY (script.contains (QStringLiteral ("usage.limits")));
-  QVERIFY (script.contains (QStringLiteral ("detail.remaining")));
-  QVERIFY (script.contains (QStringLiteral ("limit - used")));
-  QVERIFY (script.contains (QStringLiteral ("usedRatio")));
-  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHour")));
-  QVERIFY (!script.contains (QStringLiteral ("stats-section")));
-  QVERIFY (!script.contains (QStringLiteral ("nth-child")));
-  QVERIFY (script.contains (QStringLiteral ("kimi-code")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHourBalanceText")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("parse_error")));
+  QCOMPARE (provider.sourceType, SourceType::BrowserExt);
 }
 
 void
@@ -436,36 +174,9 @@ ProviderRegistryTest::glmCodingProviderUrlsMatchCodingPlanUsage ()
       = registry.provider (QStringLiteral ("glm-coding"));
 
   QCOMPARE (provider.loginUrl, QStringLiteral ("https://bigmodel.cn/"));
-  QCOMPARE (provider.quotaUrl,
-            QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"));
   QCOMPARE (provider.consoleUrl,
             QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"));
-
-  QVERIFY (provider.allowedOrigins.contains (
-      QStringLiteral ("https://bigmodel.cn")));
-  QCOMPARE (provider.sourceType, SourceType::WebView);
-  QVERIFY (!provider.extractorScript.isEmpty ());
-}
-
-void
-ProviderRegistryTest::glmCodingExtractorReadsQuotaLimitApi ()
-{
-  const ProviderRegistry registry = ProviderRegistry::createDefault ();
-  const ProviderDefinition provider
-      = registry.provider (QStringLiteral ("glm-coding"));
-
-  const QString script = provider.extractorScript;
-
-  QVERIFY (script.contains (QStringLiteral ("glm-coding")));
-  QVERIFY (script.contains (QStringLiteral ("bigmodel_token_production")));
-  QVERIFY (script.contains (QStringLiteral ("/api/monitor/usage/quota/limit")));
-  QVERIFY (script.contains (QStringLiteral ("TOKENS_LIMIT")));
-  QVERIFY (script.contains (QStringLiteral ("unit === 3")));
-  QVERIFY (script.contains (QStringLiteral ("unit === 6")));
-  QVERIFY (script.contains (QStringLiteral ("usedRatio")));
-  QVERIFY (script.contains (QStringLiteral ("1 - usedRatio")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("parse_error")));
+  QCOMPARE (provider.sourceType, SourceType::BrowserExt);
 }
 
 void
@@ -491,15 +202,8 @@ ProviderRegistryTest::kimiCodeDualQuotaSnapshotContract ()
   QCOMPARE (map.value (QStringLiteral ("fiveHourBalanceText")).toString (),
             QStringLiteral ("40%"));
 
-  const ProviderRegistry registry = ProviderRegistry::createDefault ();
-  const ProviderDefinition provider
-      = registry.provider (QStringLiteral ("kimi-code"));
-  const QString script = provider.extractorScript;
-
-  QVERIFY (script.contains (QStringLiteral ("fiveHourRemainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("remainingRatio")));
-  QVERIFY (script.contains (QStringLiteral ("weekly")));
-  QVERIFY (script.contains (QStringLiteral ("fiveHour")));
+  QCOMPARE (map.value (QStringLiteral ("source")).toString (),
+            QStringLiteral ("browser_ext"));
 }
 
 void
@@ -513,21 +217,6 @@ ProviderRegistryTest::fiveHourDefaultIsNegativeOne ()
   QCOMPARE (map.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), -1.0);
   QCOMPARE (map.value (QStringLiteral ("fiveHourBalanceText")).toString (),
             QString ());
-}
-
-void
-ProviderRegistryTest::kimiCodeExtractorOmitsFieldsOnNull ()
-{
-  const ProviderRegistry registry = ProviderRegistry::createDefault ();
-  const ProviderDefinition provider
-      = registry.provider (QStringLiteral ("kimi-code"));
-  const QString script = provider.extractorScript;
-
-  QVERIFY (script.contains (QStringLiteral ("if (parsed.weekly)")));
-  QVERIFY (script.contains (QStringLiteral ("if (parsed.fiveHour)")));
-
-  QVERIFY (!script.contains (QStringLiteral ("fiveHourRemainingRatio: 0")));
-  QVERIFY (!script.contains (QStringLiteral ("remainingRatio: 0")));
 }
 
 void
@@ -577,155 +266,319 @@ ProviderRegistryTest::fiveHourQuotaPercentFallsBackToText ()
 
   QVERIFY (fnBody.contains (QStringLiteral ("N/A")));
   QVERIFY (fnBody.contains (QStringLiteral ("fiveHourBalanceText")));
-
-  QVERIFY (!fnBody.contains (QStringLiteral ("Math.max(0, Math.min(1, snapshot.fiveHourRemainingRatio")));
 }
 
 void
-ProviderRegistryTest::webViewAcceptsTextOnlyResult ()
+ProviderRegistryTest::browserExtResultParsesCorrectly ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString qml = QString::fromUtf8 (file.readAll ());
-
-  QVERIFY (!qml.contains (QStringLiteral (
-      "result.remainingRatio >= 0 || result.fiveHourRemainingRatio >= 0")));
-
-  QVERIFY (qml.contains (QStringLiteral ("var hasRatio")));
-  QVERIFY (qml.contains (QStringLiteral ("var hasText")));
-  QVERIFY (qml.contains (QStringLiteral ("balanceText")));
-  QVERIFY (qml.contains (QStringLiteral ("fiveHourBalanceText")));
-  QVERIFY (qml.contains (QStringLiteral ("hasRatio || hasText")));
-
-  QVERIFY (qml.contains (QStringLiteral ("typeof result.remainingRatio")));
-  QVERIFY (qml.contains (QStringLiteral ("typeof result.balanceText")));
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  for (const QString &providerId : registry.providerIds ())
+    {
+      const ProviderDefinition provider = registry.provider (providerId);
+      QCOMPARE (provider.sourceType, SourceType::BrowserExt);
+    }
 }
 
 void
-ProviderRegistryTest::webPopupReturnsToStatusAfterAutoExtractionFailure ()
+ProviderRegistryTest::sourceTypeIsBrowserExt ()
+{
+  QCOMPARE (sourceTypeToString (SourceType::BrowserExt),
+            QStringLiteral ("browser_ext"));
+  QCOMPARE (sourceTypeToString (SourceType::OfficialApi),
+            QStringLiteral ("official_api"));
+  QCOMPARE (sourceTypeToString (SourceType::Manual),
+            QStringLiteral ("manual"));
+}
+
+void
+ProviderRegistryTest::panelQmlShowsExtensionConnectionStatus ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
   const QString qml = QString::fromUtf8 (file.readAll ());
-
-  const qsizetype failedStart = qml.indexOf (
-      QStringLiteral ("item.extractionFailed.connect"));
-  QVERIFY (failedStart >= 0);
-
-  const qsizetype failedEnd = qml.indexOf (
-      QStringLiteral ("item.loginSucceeded.connect"), failedStart);
-  QVERIFY (failedEnd > failedStart);
-
-  const QString failedHandler = qml.mid (failedStart, failedEnd - failedStart);
-  QVERIFY (failedHandler.contains (QStringLiteral ("setProviderError")));
-  QVERIFY (failedHandler.contains (QStringLiteral ("item.wasAutoMode")));
-  QVERIFY (failedHandler.contains (QStringLiteral ("autoCloseTimer.start()")));
+  QVERIFY (qml.contains (QStringLiteral ("extensionConnected")));
+  QVERIFY (qml.contains (QStringLiteral ("已连接")));
+  QVERIFY (qml.contains (QStringLiteral ("未连接")));
 }
 
 void
-ProviderRegistryTest::loginPageDetectionBlocksPrematureExtraction ()
+ProviderRegistryTest::panelQmlHasManualInput ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
   const QString qml = QString::fromUtf8 (file.readAll ());
-
-  QVERIFY (qml.contains (QStringLiteral ("_isOnLoginPage")));
-  QVERIFY (qml.contains (QStringLiteral ("_urlBasePath")));
-
-  QVERIFY (!qml.contains (QStringLiteral (
-      "indexOf(\"/login\") === -1")));
-
-  QVERIFY (qml.contains (QStringLiteral (
-      "!root._isOnLoginPage(webView.url)")));
-
-  const qsizetype phaseOneStart = qml.indexOf (
-      QStringLiteral ("_autoPhase === 1"));
-  QVERIFY (phaseOneStart >= 0);
-  const qsizetype phaseOneEnd = qml.indexOf (
-      QStringLiteral ("} else if"), phaseOneStart);
-  QVERIFY (phaseOneEnd > phaseOneStart);
-
-  const QString phaseOne = qml.mid (phaseOneStart, phaseOneEnd - phaseOneStart);
-  QVERIFY (phaseOne.contains (QStringLiteral ("_isOnLoginPage")));
+  QVERIFY (qml.contains (QStringLiteral ("手动录入")));
+  QVERIFY (qml.contains (QStringLiteral ("setManualRatio")));
 }
 
 void
-ProviderRegistryTest::mainCppLoginGuardBlocksReload ()
+ProviderRegistryTest::panelQmlHasTokenDisplay ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString cpp = QString::fromUtf8 (file.readAll ());
-
-  QVERIFY (cpp.contains (QStringLiteral ("onLoginPage && m_loginPhase == 0")));
-  QVERIFY (cpp.contains (QStringLiteral ("onLoginPage)")));
-  QVERIFY (cpp.contains (QStringLiteral ("QUrl(loginPath).path()")));
-}
-
-void
-ProviderRegistryTest::standaloneLoginPageProbesQuotaUrlBeforeWaiting ()
-{
-  QFile file (QStringLiteral (SOURCE_DIR "/app/main.cpp"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString cpp = QString::fromUtf8 (file.readAll ());
-
-  const qsizetype guardStart = cpp.indexOf (
-      QStringLiteral ("onLoginPage && m_loginPhase == 0"));
-  QVERIFY (guardStart >= 0);
-
-  const qsizetype guardEnd = cpp.indexOf (
-      QStringLiteral ("if (onLoginPage)"), guardStart);
-  QVERIFY (guardEnd > guardStart);
-
-  const QString guardBlock = cpp.mid (guardStart, guardEnd - guardStart);
-  QVERIFY (guardBlock.contains (QStringLiteral ("QTimer::singleShot")));
-  QVERIFY (guardBlock.contains (QStringLiteral ("quotaUrl")));
-  QVERIFY (guardBlock.contains (QStringLiteral ("setUrl(QUrl(quotaUrl))")));
-}
-
-void
-ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
-{
-  QFile file (QStringLiteral (SOURCE_DIR "/package/ProviderWebView.qml"));
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
   const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (qml.contains (QStringLiteral ("extensionToken")));
+  QVERIFY (qml.contains (QStringLiteral ("配对 Token")));
+}
 
-  const qsizetype runJsStart = qml.indexOf (QStringLiteral ("runJavaScript"));
-  QVERIFY (runJsStart >= 0);
+void
+ProviderRegistryTest::extensionManifestExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/manifest.json"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
-  const qsizetype callbackStart = qml.indexOf (QStringLiteral ("function(result)"), runJsStart);
-  QVERIFY (callbackStart >= 0);
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("\"manifest_version\": 3")));
+  QVERIFY (content.contains (QStringLiteral ("DDE Coding Plan Quota Helper")));
+  QVERIFY (content.contains (QStringLiteral ("offscreen")));
+  QVERIFY (content.contains (QStringLiteral ("storage")));
+  QVERIFY (content.contains (QStringLiteral ("service_worker")));
+}
 
-  const qsizetype callbackEnd = qml.indexOf (QStringLiteral ("})"), callbackStart);
-  QVERIFY (callbackEnd > callbackStart);
+void
+ProviderRegistryTest::extensionServiceWorkerExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
-  const QString callback = qml.mid (callbackStart, callbackEnd - callbackStart + 2);
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("WebSocket")));
+  QVERIFY (content.contains (QStringLiteral ("127.0.0.1:18765")));
+  QVERIFY (content.contains (QStringLiteral ("auth")));
+  QVERIFY (content.contains (QStringLiteral ("refresh_request")));
+  QVERIFY (content.contains (QStringLiteral ("refresh_result")));
+  QVERIFY (content.contains (QStringLiteral ("offscreen")));
+}
 
-  QVERIFY (callback.contains (QStringLiteral (
-      "if (!result || typeof result !== \"object\")")));
+void
+ProviderRegistryTest::extensionProvidersExist ()
+{
+  for (const QString &name : { QStringLiteral ("codex"),
+                               QStringLiteral ("kimi-code"),
+                               QStringLiteral ("glm-coding") })
+    {
+      QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/") + name + QStringLiteral (".js"));
+      QVERIFY2 (file.exists (), qPrintable (QStringLiteral ("Missing provider: %1.js").arg (name)));
+      QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
-  const qsizetype guardPos = callback.indexOf (
-      QStringLiteral ("if (!result || typeof result !== \"object\")"));
-  QVERIFY (guardPos >= 0);
+      const QString content = QString::fromUtf8 (file.readAll ());
+      QVERIFY (content.contains (QStringLiteral ("extractQuota")));
+      QVERIFY (content.contains (QStringLiteral ("normalizeSnapshot")));
+    }
+}
 
-  const qsizetype hasRatioPos = callback.indexOf (
-      QStringLiteral ("var hasRatio"));
-  QVERIFY (hasRatioPos >= 0);
-  QVERIFY (hasRatioPos > guardPos);
+void
+ProviderRegistryTest::extensionSharedProtocolExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/ws-protocol.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
-  const qsizetype retryPos = callback.indexOf (
-      QStringLiteral ("_scheduleExtractionRetry"), guardPos);
-  QVERIFY (retryPos >= 0);
-  QVERIFY (retryPos < hasRatioPos);
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("MSG_TYPE_AUTH")));
+  QVERIFY (content.contains (QStringLiteral ("MSG_TYPE_REFRESH_REQUEST")));
+  QVERIFY (content.contains (QStringLiteral ("WS_URL")));
+  QVERIFY (content.contains (QStringLiteral ("127.0.0.1:18765")));
+}
 
-  QVERIFY (qml.contains (QStringLiteral ("function _finishExtractionFailure")));
-  QVERIFY (qml.contains (QStringLiteral ("extractionFailed(message)")));
-  QVERIFY (qml.contains (QStringLiteral ("_autoMode = false")));
+void
+ProviderRegistryTest::websocketServerHeaderExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.h"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("WebSocketServer")));
+  QVERIFY (content.contains (QStringLiteral ("start")));
+  QVERIFY (content.contains (QStringLiteral ("sendRefreshRequest")));
+  QVERIFY (content.contains (QStringLiteral ("sendOpenConsole")));
+  QVERIFY (content.contains (QStringLiteral ("generateToken")));
+  QVERIFY (content.contains (QStringLiteral ("refreshResultReceived")));
+  QVERIFY (content.contains (QStringLiteral ("authSuccess")));
+  QVERIFY (content.contains (QStringLiteral ("authFailed")));
+}
+
+void
+ProviderRegistryTest::websocketServerCppExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("QWebSocketServer")));
+  QVERIFY (content.contains (QStringLiteral ("18765")));
+  QVERIFY (content.contains (QStringLiteral ("QHostAddress::LocalHost")));
+}
+
+void
+ProviderRegistryTest::websocketServerHasHeartbeat ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/websocket_server.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+  QVERIFY (headerContent.contains (QStringLiteral ("onHeartbeatTimeout")));
+  QVERIFY (headerContent.contains (QStringLiteral ("startHeartbeat")));
+  QVERIFY (headerContent.contains (QStringLiteral ("stopHeartbeat")));
+  QVERIFY (headerContent.contains (QStringLiteral ("m_heartbeatTimer")));
+
+  QFile cpp (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (cpp.open (QIODevice::ReadOnly), qPrintable (cpp.errorString ()));
+  const QString cppContent = QString::fromUtf8 (cpp.readAll ());
+  QVERIFY (cppContent.contains (QStringLiteral ("kHeartbeatTimeoutMs")));
+  QVERIFY (cppContent.contains (QStringLiteral ("heartbeat timeout")));
+  QVERIFY (cppContent.contains (QStringLiteral ("kHeartbeatIntervalMs")));
+}
+
+void
+ProviderRegistryTest::websocketServerHasTokenPermissions ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("QSaveFile")));
+  QVERIFY (content.contains (QStringLiteral ("setPermissions")));
+  QVERIFY (content.contains (QStringLiteral ("ReadOwner")));
+  QVERIFY (content.contains (QStringLiteral ("WriteOwner")));
+}
+
+void
+ProviderRegistryTest::websocketServerOldConnectionClose ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype newConnStart = content.indexOf (QStringLiteral ("onNewConnection"));
+  QVERIFY (newConnStart >= 0);
+
+  const qsizetype closeCallPos = content.indexOf (QStringLiteral ("m_client->close"), newConnStart);
+  QVERIFY (closeCallPos >= newConnStart);
+
+  const QString closeBlock = content.mid (closeCallPos, 120);
+  QVERIFY (closeBlock.contains (QStringLiteral ("CloseCodeNormal"))
+           || closeBlock.contains (QStringLiteral ("close")));
+}
+
+void
+ProviderRegistryTest::browserExtProviderHeaderExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/browser_ext_provider.h"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("BrowserExtProvider")));
+  QVERIFY (content.contains (QStringLiteral ("refreshProviders")));
+  QVERIFY (content.contains (QStringLiteral ("isExtensionConnected")));
+  QVERIFY (content.contains (QStringLiteral ("refreshCompleted")));
+  QVERIFY (content.contains (QStringLiteral ("refreshFailed")));
+}
+
+void
+ProviderRegistryTest::browserExtProviderCppExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/browser_ext_provider.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("resultToSnapshot")));
+  QVERIFY (content.contains (QStringLiteral ("BrowserExt")));
+  QVERIFY (content.contains (QStringLiteral ("kProviderTimeoutMs")));
+}
+
+void
+ProviderRegistryTest::cmakeUsesWebSockets ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("WebSockets")));
+  QVERIFY (content.contains (QStringLiteral ("websocket_server")));
+  QVERIFY (content.contains (QStringLiteral ("browser_ext_provider")));
+}
+
+void
+ProviderRegistryTest::cmakeRemovesWebEngine ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (!content.contains (QStringLiteral ("WebEngineWidgets")));
+  QVERIFY (!content.contains (QStringLiteral ("WebChannel")));
+  QVERIFY (!content.contains (QStringLiteral ("app/main.cpp")));
+  QVERIFY (!content.contains (QStringLiteral ("webbridge")));
+  QVERIFY (!content.contains (QStringLiteral ("web/dist")));
+}
+
+void
+ProviderRegistryTest::providerDefinitionFieldsCleaned ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/providerregistry.h"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (!content.contains (QStringLiteral ("extractorScript")));
+  QVERIFY (!content.contains (QStringLiteral ("allowedOrigins")));
+  QVERIFY (!content.contains (QStringLiteral ("quotaUrl")));
+
+  QVERIFY (content.contains (QStringLiteral ("loginUrl")));
+  QVERIFY (content.contains (QStringLiteral ("consoleUrl")));
+}
+
+void
+ProviderRegistryTest::protocolProviderIdConsistency ()
+{
+  QFile sw (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (sw.open (QIODevice::ReadOnly), qPrintable (sw.errorString ()));
+  const QString swContent = QString::fromUtf8 (sw.readAll ());
+
+  QVERIFY (swContent.contains (QStringLiteral ("codex")));
+  QVERIFY (swContent.contains (QStringLiteral ("kimi_code")));
+  QVERIFY (swContent.contains (QStringLiteral ("glm_coding")));
+
+  QFile provider (QStringLiteral (SOURCE_DIR "/extension/providers/codex.js"));
+  QVERIFY2 (provider.open (QIODevice::ReadOnly), qPrintable (provider.errorString ()));
+  const QString providerContent = QString::fromUtf8 (provider.readAll ());
+  QVERIFY (providerContent.contains (QStringLiteral ("id: \"codex\"")));
+
+  QFile kimiProvider (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (kimiProvider.open (QIODevice::ReadOnly), qPrintable (kimiProvider.errorString ()));
+  const QString kimiContent = QString::fromUtf8 (kimiProvider.readAll ());
+  QVERIFY (kimiContent.contains (QStringLiteral ("id: \"kimi-code\"")));
+
+  QFile wsProto (QStringLiteral (SOURCE_DIR "/extension/shared/ws-protocol.js"));
+  QVERIFY2 (wsProto.open (QIODevice::ReadOnly), qPrintable (wsProto.errorString ()));
+  const QString protoContent = QString::fromUtf8 (wsProto.readAll ());
+  QVERIFY (protoContent.contains (QStringLiteral ("MSG_TYPE_REFRESH_REQUEST")));
+  QVERIFY (protoContent.contains (QStringLiteral ("MSG_TYPE_REFRESH_RESULT")));
+  QVERIFY (protoContent.contains (QStringLiteral ("MSG_TYPE_REFRESH_PROGRESS")));
+  QVERIFY (protoContent.contains (QStringLiteral ("MSG_TYPE_AUTH")));
+  QVERIFY (protoContent.contains (QStringLiteral ("MSG_TYPE_OPEN_CONSOLE")));
+}
+
+void
+ProviderRegistryTest::modelMigratesWebviewSnapshots ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("webview")));
+  QVERIFY (content.contains (QStringLiteral ("BrowserExt")));
+
+  const qsizetype loadStart = content.indexOf (QStringLiteral ("loadSnapshots"));
+  QVERIFY (loadStart >= 0);
+
+  const QString loadBody = content.mid (loadStart, 2000);
+  QVERIFY (loadBody.contains (QStringLiteral ("webview")));
+  QVERIFY (loadBody.contains (QStringLiteral ("BrowserExt")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

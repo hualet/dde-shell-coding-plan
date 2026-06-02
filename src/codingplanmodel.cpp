@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "codingplanmodel.h"
+#include "websocket_server.h"
+#include "browser_ext_provider.h"
 
 #include <QDateTime>
 #include <QDesktopServices>
@@ -88,10 +90,7 @@ CodingPlanModel::providers () const
       item.insert (QStringLiteral ("name"), provider.name);
       item.insert (QStringLiteral ("source"), sourceTypeToString (provider.sourceType));
       item.insert (QStringLiteral ("loginUrl"), provider.loginUrl);
-      item.insert (QStringLiteral ("quotaUrl"), provider.quotaUrl);
       item.insert (QStringLiteral ("consoleUrl"), provider.consoleUrl);
-      item.insert (QStringLiteral ("allowedOrigins"), provider.allowedOrigins);
-      item.insert (QStringLiteral ("extractorScript"), provider.extractorScript);
       result.append (item);
     }
   return result;
@@ -133,7 +132,27 @@ CodingPlanModel::tooltipText () const
 void
 CodingPlanModel::refreshAll ()
 {
-  emit backgroundRefreshRequested ();
+  if (m_browserExtProvider && m_browserExtProvider->isExtensionConnected ())
+    {
+      QStringList providerIds;
+      for (const QuotaSnapshot &snapshot : m_snapshots)
+        {
+          if (snapshot.status == SnapshotStatus::Ok
+              || snapshot.status == SnapshotStatus::Warning
+              || snapshot.status == SnapshotStatus::Exhausted)
+            {
+              providerIds.append (snapshot.providerId);
+            }
+        }
+      if (!providerIds.isEmpty ())
+        {
+          m_browserExtProvider->refreshProviders (providerIds);
+        }
+    }
+  else
+    {
+      emit backgroundRefreshRequested ();
+    }
 }
 
 void
@@ -160,7 +179,7 @@ CodingPlanModel::refreshProvider (const QString &providerId)
     }
 
   snapshot.status = SnapshotStatus::AuthError;
-  snapshot.message = QStringLiteral ("请先在内置 WebView 中登录官方页面，然后刷新读取额度。");
+  snapshot.message = QStringLiteral ("请安装浏览器扩展并完成配对，然后刷新读取额度。");
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   snapshot.consoleUrl = provider.consoleUrl;
   m_snapshots[index] = snapshot;
@@ -217,10 +236,10 @@ CodingPlanModel::setManualRatio (const QString &providerId, double ratio)
 }
 
 void
-CodingPlanModel::setWebViewResult (const QString &providerId,
-                                   const QVariantMap &result)
+CodingPlanModel::setBrowserExtResult (const QString &providerId,
+                                      const QVariantMap &result)
 {
-  qWarning () << "[coding-plan][model] setWebViewResult input" << providerId
+  qWarning () << "[coding-plan][model] setBrowserExtResult input" << providerId
             << "status" << result.value (QStringLiteral ("status")).toString ()
             << "remaining" << result.value (QStringLiteral ("remainingRatio"))
             << "fiveHour" << result.value (QStringLiteral ("fiveHourRemainingRatio"))
@@ -231,8 +250,8 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
   const int index = snapshotIndex (providerId);
   if (index < 0)
     {
-      qWarning () << "[coding-plan][model] setWebViewResult ignored unknown provider"
-                << providerId;
+      qWarning () << "[coding-plan][model] setBrowserExtResult ignored unknown provider"
+                 << providerId;
       return;
     }
 
@@ -262,14 +281,14 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
     }
   snapshot.fiveHourBalanceText = result.value (QStringLiteral ("fiveHourBalanceText")).toString ();
 
-  qWarning () << "[coding-plan][model] setWebViewResult parsed" << providerId
+  qWarning () << "[coding-plan][model] setBrowserExtResult parsed" << providerId
             << "remaining" << snapshot.remainingRatio
             << "fiveHour" << snapshot.fiveHourRemainingRatio
             << "balanceText" << snapshot.balanceText
             << "fiveHourText" << snapshot.fiveHourBalanceText;
 
   snapshot.status = SnapshotStatus::Ok;
-  snapshot.message = QStringLiteral ("WebView 读取");
+  snapshot.message = QStringLiteral ("浏览器扩展读取");
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   m_snapshots[index] = snapshot;
   saveSnapshots ();
@@ -371,6 +390,20 @@ CodingPlanModel::loadSnapshots ()
               continue;
             }
 
+          const QString sourceStr = object.value (QStringLiteral ("source")).toString ();
+          if (sourceStr == QStringLiteral ("webview"))
+            {
+              snapshot.source = SourceType::BrowserExt;
+            }
+          else
+            {
+              snapshot.source = (sourceStr == QStringLiteral ("official_api"))
+                  ? SourceType::OfficialApi
+                  : (sourceStr == QStringLiteral ("manual"))
+                      ? SourceType::Manual
+                      : SourceType::BrowserExt;
+            }
+
           snapshot.status = statusFromString (object.value (QStringLiteral ("status")).toString ());
           snapshot.remainingRatio = object.value (QStringLiteral ("remainingRatio")).toDouble (-1.0);
           snapshot.balanceText = object.value (QStringLiteral ("balanceText")).toString ();
@@ -428,6 +461,65 @@ CodingPlanModel::snapshotIndex (const QString &providerId) const
     }
 
   return -1;
+}
+
+bool
+CodingPlanModel::extensionConnected () const
+{
+  return m_browserExtProvider && m_browserExtProvider->isExtensionConnected ();
+}
+
+QString
+CodingPlanModel::extensionToken () const
+{
+  return m_wsServer ? m_wsServer->token () : QString ();
+}
+
+void
+CodingPlanModel::setWebSocketServer (WebSocketServer *server)
+{
+  m_wsServer = server;
+
+  if (m_wsServer)
+    {
+      m_browserExtProvider = new BrowserExtProvider (m_wsServer, this);
+
+      connect (m_browserExtProvider, &BrowserExtProvider::refreshCompleted,
+               this, &CodingPlanModel::onRefreshCompleted);
+      connect (m_browserExtProvider, &BrowserExtProvider::refreshFailed,
+               this, &CodingPlanModel::onRefreshFailed);
+      connect (m_browserExtProvider, &BrowserExtProvider::extensionStatusChanged,
+               this, &CodingPlanModel::onExtensionStatusChanged);
+    }
+}
+
+void
+CodingPlanModel::onRefreshCompleted (const QString &providerId,
+                                     const QuotaSnapshot &snapshot)
+{
+  const int index = snapshotIndex (providerId);
+  if (index < 0)
+    {
+      return;
+    }
+
+  m_snapshots[index] = snapshot;
+  saveSnapshots ();
+  emit snapshotsChanged ();
+}
+
+void
+CodingPlanModel::onRefreshFailed (const QString &providerId,
+                                  const QString &message)
+{
+  setProviderError (providerId, message);
+}
+
+void
+CodingPlanModel::onExtensionStatusChanged (bool connected)
+{
+  Q_UNUSED (connected)
+  emit extensionStatusChanged ();
 }
 
 void

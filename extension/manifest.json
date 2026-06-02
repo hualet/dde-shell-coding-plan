@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DDE Coding Plan Quota Helper",
+  "version": "0.1.0",
+  "description": "Reads AI coding plan quota pages and reports to DDE Shell plugin via WebSocket",
+  "permissions": [
+    "offscreen",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://platform.moonshot.cn/*",
+    "https://open.bigmodel.cn/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html"
+  }
+}
