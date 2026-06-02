@@ -268,11 +268,30 @@ WebSocketServer::handleAuthMessage (const QVariantMap &msg)
       m_authenticated = true;
       startHeartbeat ();
       qInfo () << "[coding-plan][ws] auth success";
+
+      QVariantMap reply;
+      reply.insert (QStringLiteral ("type"), QStringLiteral ("auth_result"));
+      reply.insert (QStringLiteral ("success"), true);
+      sendJson (reply);
+
       emit authSuccess ();
     }
   else
     {
       qWarning () << "[coding-plan][ws] auth failed: token mismatch";
+
+      QVariantMap reply;
+      reply.insert (QStringLiteral ("type"), QStringLiteral ("auth_result"));
+      reply.insert (QStringLiteral ("success"), false);
+      reply.insert (QStringLiteral ("message"), QStringLiteral ("Token mismatch"));
+
+      if (m_client)
+        {
+          const QByteArray data = QJsonDocument (
+              QJsonObject::fromVariantMap (reply)).toJson (QJsonDocument::Compact);
+          m_client->sendTextMessage (QString::fromUtf8 (data));
+        }
+
       m_authenticated = false;
       emit authFailed ();
       if (m_client)
