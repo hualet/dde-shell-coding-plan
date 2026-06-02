@@ -63,6 +63,7 @@ private:
   void sendJson (const QVariantMap &msg);
   void startHeartbeat ();
   void stopHeartbeat ();
+  void discardClient ();
 
   QWebSocketServer *m_server = nullptr;
   QWebSocket *m_client = nullptr;

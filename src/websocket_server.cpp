@@ -78,13 +78,7 @@ WebSocketServer::start (quint16 port)
 void
 WebSocketServer::stop ()
 {
-  if (m_client)
-    {
-      m_client->close ();
-      m_client->deleteLater ();
-      m_client = nullptr;
-    }
-
+  discardClient ();
   m_server->close ();
   m_authenticated = false;
 }
@@ -184,12 +178,7 @@ WebSocketServer::onNewConnection ()
   if (m_client)
     {
       qWarning () << "[coding-plan][ws] closing existing connection before accepting new one";
-      stopHeartbeat ();
-      m_client->close (QWebSocketProtocol::CloseCodeNormal,
-                       QStringLiteral ("replaced by new connection"));
-      m_client->deleteLater ();
-      m_client = nullptr;
-      m_authenticated = false;
+      discardClient ();
       emit clientDisconnected ();
     }
 
@@ -264,11 +253,24 @@ WebSocketServer::onTextMessageReceived (const QString &message)
 void
 WebSocketServer::onClientDisconnected ()
 {
+  if (!m_client)
+    {
+      return;
+    }
+
   qInfo () << "[coding-plan][ws] client disconnected";
   stopHeartbeat ();
-  m_client->deleteLater ();
+
+  QWebSocket *old = m_client;
   m_client = nullptr;
   m_authenticated = false;
+
+  disconnect (old, &QWebSocket::textMessageReceived,
+              this, &WebSocketServer::onTextMessageReceived);
+  disconnect (old, &QWebSocket::disconnected,
+              this, &WebSocketServer::onClientDisconnected);
+  old->deleteLater ();
+
   emit clientDisconnected ();
 }
 
@@ -309,10 +311,7 @@ WebSocketServer::handleAuthMessage (const QVariantMap &msg)
 
       m_authenticated = false;
       emit authFailed ();
-      if (m_client)
-        {
-          m_client->close ();
-        }
+      discardClient ();
     }
 }
 
@@ -379,12 +378,31 @@ WebSocketServer::stopHeartbeat ()
 }
 
 void
+WebSocketServer::discardClient ()
+{
+  if (!m_client)
+    {
+      return;
+    }
+
+  stopHeartbeat ();
+
+  QWebSocket *old = m_client;
+  m_client = nullptr;
+  m_authenticated = false;
+
+  disconnect (old, &QWebSocket::textMessageReceived,
+              this, &WebSocketServer::onTextMessageReceived);
+  disconnect (old, &QWebSocket::disconnected,
+              this, &WebSocketServer::onClientDisconnected);
+  old->close (QWebSocketProtocol::CloseCodeNormal,
+              QStringLiteral ("replaced"));
+  old->deleteLater ();
+}
+
+void
 WebSocketServer::onHeartbeatTimeout ()
 {
   qWarning () << "[coding-plan][ws] heartbeat timeout, closing connection";
-  if (m_client)
-    {
-      m_client->close (QWebSocketProtocol::CloseCodeNormal,
-                       QStringLiteral ("heartbeat timeout"));
-    }
+  discardClient ();
 }
