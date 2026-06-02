@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>DDE Coding Plan - 配置</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; color: #333; background: #f7f8fa;
+    display: flex; min-height: 100vh;
+  }
+  .sidebar {
+    width: 220px; background: #fff; border-right: 1px solid #e5e7eb;
+    padding: 20px 0; flex-shrink: 0;
+  }
+  .sidebar h1 {
+    font-size: 15px; font-weight: 600; padding: 0 20px 16px;
+    border-bottom: 1px solid #e5e7eb; color: #1f2937;
+  }
+  .sidebar nav { padding: 8px 0; }
+  .sidebar nav a {
+    display: block; padding: 10px 20px; color: #6b7280; text-decoration: none;
+    font-size: 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .sidebar nav a:hover { background: #f3f4f6; color: #1f2937; }
+  .sidebar nav a.active { background: #eff6ff; color: #1976d2; font-weight: 500; }
+  .main {
+    flex: 1; padding: 32px 40px; max-width: 720px;
+  }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #1f2937; }
+  .card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 500; margin-bottom: 6px; color: #374151; font-size: 13px; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 13px; outline: none; transition: border-color 0.15s;
+  }
+  input[type="text"]:focus, input[type="password"]:focus { border-color: #1976d2; }
+  .field { margin-bottom: 16px; }
+  .hint { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+  button {
+    padding: 9px 20px; border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 500; transition: all 0.15s;
+  }
+  .btn-primary { background: #1976d2; color: white; }
+  .btn-primary:hover { background: #1565c0; }
+  .btn-primary:disabled { background: #90caf9; cursor: not-allowed; }
+  .btn-danger { background: #fff; color: #ef4444; border: 1px solid #fca5a5; }
+  .btn-danger:hover { background: #fef2f2; }
+  .btn-secondary { background: #f3f4f6; color: #374151; }
+  .btn-secondary:hover { background: #e5e7eb; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; }
+
+  .status-bar {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 16px;
+    padding: 10px 16px; background: #fff; border-radius: 8px;
+    border: 1px solid #e5e7eb;
+  }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .status-dot.connected { background: #28c76f; }
+  .status-dot.disconnected { background: #8b949e; }
+  .status-dot.auth_failed, .status-dot.error, .status-dot.timeout { background: #ea5455; }
+  .status-text { font-size: 13px; color: #374151; }
+
+  .plan-list { display: flex; flex-direction: column; gap: 12px; }
+  .plan-card {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+    transition: box-shadow 0.15s;
+  }
+  .plan-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .plan-card.enabled { border-left: 3px solid #1976d2; }
+  .plan-info { flex: 1; }
+  .plan-name { font-weight: 600; font-size: 14px; color: #1f2937; }
+  .plan-id { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+  .plan-actions { display: flex; gap: 8px; align-items: center; }
+  .toggle {
+    position: relative; width: 40px; height: 22px; cursor: pointer;
+  }
+  .toggle input { display: none; }
+  .toggle-slider {
+    position: absolute; inset: 0; background: #d1d5db; border-radius: 11px;
+    transition: background 0.2s;
+  }
+  .toggle-slider::before {
+    content: ''; position: absolute; width: 18px; height: 18px;
+    left: 2px; top: 2px; background: white; border-radius: 50%;
+    transition: transform 0.2s;
+  }
+  .toggle input:checked + .toggle-slider { background: #1976d2; }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+    background: #1f2937; color: white; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <h1>DDE Coding Plan</h1>
+  <nav>
+    <a class="active" data-panel="connection">连接配置</a>
+    <a data-panel="plans">Plan 管理</a>
+    <a data-panel="about">关于</a>
+  </nav>
+</div>
+
+<div class="main">
+  <div class="panel active" id="panel-connection">
+    <h2>连接配置</h2>
+    <div class="status-bar">
+      <div class="status-dot disconnected" id="statusDot"></div>
+      <span class="status-text" id="statusText">未连接</span>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label for="tokenInput">DDE Shell Token</label>
+        <input type="password" id="tokenInput" placeholder="粘贴 DDE Shell 插件面板显示的 Token">
+        <div class="hint">在 DDE Shell Coding Plan 面板中查看配对 Token</div>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="saveTokenBtn">保存并连接</button>
+        <button class="btn-secondary" id="testConnBtn">测试连接</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-plans">
+    <h2>Coding Plan 管理</h2>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="font-weight:500;">已启用的 Plan</span>
+        <button class="btn-primary" id="refreshAllBtn">刷新全部</button>
+      </div>
+      <div class="plan-list" id="planList"></div>
+    </div>
+    <div class="card">
+      <span style="font-weight:500; display:block; margin-bottom:12px;">添加 Plan</span>
+      <div class="plan-list" id="addPlanList"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-about">
+    <h2>关于</h2>
+    <div class="card">
+      <p style="line-height:1.8;">
+        <strong>DDE Coding Plan Quota Helper</strong><br>
+        版本 0.2.0<br><br>
+        通过 WebSocket 与 DDE Shell Coding Plan 插件通信，<br>
+        自动读取 Codex、Kimi Code、GLM Coding 的额度信息。<br><br>
+        数据仅存储在本机，不会上传到任何服务器。
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="options.js" type="module"></script>
+</body>
+</html>

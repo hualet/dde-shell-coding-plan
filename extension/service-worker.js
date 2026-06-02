@@ -16,7 +16,14 @@ import {
   ALARM_INTERVAL_MINUTES,
   TOKEN_STORAGE_KEY,
   STATUS_STORAGE_KEY,
+  AUTO_REFRESH_ALARM,
+  AUTO_REFRESH_INTERVAL_MINUTES,
 } from "./shared/ws-protocol.js";
+
+import {
+  getEnabledPlans,
+  setQuotaCacheEntry,
+} from "./shared/storage.js";
 
 const PROVIDERS = {
   codex: codexProvider,
@@ -28,6 +35,9 @@ let ws = null;
 let authenticated = false;
 let heartbeatTimer = null;
 let connectTimeoutTimer = null;
+
+const refreshQueue = [];
+let refreshRunning = false;
 
 function log(...args) {
   console.log("[dde-coding-plan]", ...args);
@@ -50,7 +60,7 @@ function sendJson(msg) {
     ws.send(JSON.stringify(msg));
     log("send:", msg.type, msg);
   } else {
-    warn("cannot send, ws not open, readyState:", ws ? ws.readyState : "null");
+    warn("cannot send, ws not open");
   }
 }
 
@@ -86,13 +96,13 @@ async function getToken() {
 
 async function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-    log("connect: already connected or connecting, readyState:", ws.readyState);
+    log("connect: already connected or connecting");
     return;
   }
 
   const token = await getToken();
   if (!token) {
-    warn("connect: no token configured, skipping connection");
+    warn("connect: no token configured");
     updateConnectionStatus("no_token");
     return;
   }
@@ -139,13 +149,12 @@ async function connect() {
       warn("onmessage: invalid JSON:", event.data);
       return;
     }
-
     log("onmessage:", msg.type, msg);
     handleMessage(msg);
   };
 
-  ws.onclose = (event) => {
-    log("connect: WebSocket onclose, code:", event.code, "reason:", event.reason);
+  ws.onclose = () => {
+    log("connect: WebSocket onclose");
     if (connectTimeoutTimer) {
       clearTimeout(connectTimeoutTimer);
       connectTimeoutTimer = null;
@@ -198,89 +207,146 @@ function handleAuthResult(msg) {
   }
 }
 
+function enqueueRefresh(providerIds, wsRequestId, wsTimeout) {
+  for (const pid of providerIds) {
+    refreshQueue.push({ providerId: pid, wsRequestId: wsRequestId || null, wsTimeout: wsTimeout || 20000 });
+  }
+  log("enqueueRefresh: queue size now", refreshQueue.length, "running:", refreshRunning);
+  if (!refreshRunning) {
+    drainRefreshQueue();
+  }
+}
+
+async function drainRefreshQueue() {
+  if (refreshRunning) return;
+  refreshRunning = true;
+
+  while (refreshQueue.length > 0) {
+    const item = refreshQueue.shift();
+    const { providerId, wsRequestId, wsTimeout } = item;
+    const provider = PROVIDERS[providerId];
+
+    if (!provider) {
+      warn("drainRefreshQueue: unknown provider:", providerId);
+      if (wsRequestId) {
+        sendJson({
+          type: MSG_TYPE_REFRESH_RESULT,
+          requestId: wsRequestId,
+          provider: providerId,
+          data: {
+            providerId,
+            providerName: providerId,
+            source: "browser_ext",
+            status: "parse_error",
+            message: "Unknown provider: " + providerId,
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      }
+      continue;
+    }
+
+    if (wsRequestId) {
+      sendJson({
+        type: MSG_TYPE_REFRESH_PROGRESS,
+        requestId: wsRequestId,
+        provider: providerId,
+        status: "loading",
+        message: "正在加载额度页面...",
+      });
+    }
+
+    try {
+      log("drainRefreshQueue: extracting", providerId);
+      const result = await extractProviderQuota(provider, wsTimeout);
+      const data = buildCacheData(provider, result);
+
+      if (wsRequestId) {
+        sendJson({
+          type: MSG_TYPE_REFRESH_RESULT,
+          requestId: wsRequestId,
+          provider: providerId,
+          data,
+        });
+      }
+
+      await setQuotaCacheEntry(providerId, data);
+      log("drainRefreshQueue: done", providerId, "status:", result.status);
+    } catch (err) {
+      error("drainRefreshQueue: failed for", providerId, err.message);
+      const errData = buildErrorCacheData(provider, err.message);
+
+      if (wsRequestId) {
+        sendJson({
+          type: MSG_TYPE_REFRESH_RESULT,
+          requestId: wsRequestId,
+          provider: providerId,
+          data: errData,
+        });
+      }
+
+      await setQuotaCacheEntry(providerId, errData);
+    }
+  }
+
+  refreshRunning = false;
+  log("drainRefreshQueue: queue drained");
+}
+
+function buildCacheData(provider, result) {
+  return {
+    providerId: provider.id,
+    providerName: provider.name,
+    source: "browser_ext",
+    status: result.status,
+    remainingRatio: result.remainingRatio ?? -1,
+    fiveHourRemainingRatio: result.fiveHourRemainingRatio ?? -1,
+    balanceText: result.balanceText || "",
+    fiveHourBalanceText: result.fiveHourBalanceText || "",
+    used: result.used ?? -1,
+    total: result.total ?? -1,
+    unit: result.unit || "credit",
+    updatedAt: new Date().toISOString(),
+    consoleUrl: provider.consoleUrl || "",
+    message: result.message || "",
+  };
+}
+
+function buildErrorCacheData(provider, errMsg) {
+  return {
+    providerId: provider.id,
+    providerName: provider.name,
+    source: "browser_ext",
+    status: "network_error",
+    message: errMsg || "刷新失败",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 async function handleRefreshRequest(msg) {
   const { requestId, providers: providerIds, timeout } = msg;
   log("handleRefreshRequest:", requestId, providerIds, "timeout:", timeout);
 
   if (!authenticated) {
-    warn("handleRefreshRequest: not authenticated, ignoring");
+    warn("handleRefreshRequest: not authenticated");
     return;
   }
 
-  for (const providerId of providerIds) {
-    const provider = PROVIDERS[providerId];
-    if (!provider) {
-      warn("handleRefreshRequest: unknown provider:", providerId, "available:", Object.keys(PROVIDERS));
-      sendJson({
-        type: MSG_TYPE_REFRESH_RESULT,
-        requestId,
-        provider: providerId,
-        data: {
-          providerId,
-          providerName: providerId,
-          source: "browser_ext",
-          status: "parse_error",
-          message: "Unknown provider: " + providerId,
-          updatedAt: new Date().toISOString(),
-        },
-      });
-      continue;
-    }
-
-    try {
-      sendJson({
-        type: MSG_TYPE_REFRESH_PROGRESS,
-        requestId,
-        provider: providerId,
-        status: "loading",
-        message: "正在加载额度页面...",
-      });
-
-      const result = await extractProviderQuota(provider, timeout || 15000);
-
-      sendJson({
-        type: MSG_TYPE_REFRESH_RESULT,
-        requestId,
-        provider: providerId,
-        data: {
-          providerId,
-          providerName: provider.name,
-          source: "browser_ext",
-          status: result.status,
-          remainingRatio: result.remainingRatio ?? -1,
-          fiveHourRemainingRatio: result.fiveHourRemainingRatio ?? -1,
-          balanceText: result.balanceText || "",
-          fiveHourBalanceText: result.fiveHourBalanceText || "",
-          used: result.used ?? -1,
-          total: result.total ?? -1,
-          unit: result.unit || "credit",
-          updatedAt: new Date().toISOString(),
-          consoleUrl: provider.consoleUrl || "",
-          message: result.message || "",
-        },
-      });
-    } catch (err) {
-      error("handleRefreshRequest: extraction error for", providerId, err);
-      sendJson({
-        type: MSG_TYPE_REFRESH_RESULT,
-        requestId,
-        provider: providerId,
-        data: {
-          providerId,
-          providerName: provider.name,
-          source: "browser_ext",
-          status: "network_error",
-          message: err.message || "Unknown error",
-          updatedAt: new Date().toISOString(),
-        },
-      });
-    }
-  }
+  enqueueRefresh(providerIds, requestId, timeout || 15000);
 }
 
 function extractProviderQuota(provider, timeout) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    let settled = false;
+    let offscreenCreated = false;
+
+    const timer = setTimeout(async () => {
+      if (settled) return;
+      settled = true;
+      error("extractProviderQuota: timeout for", provider.id);
+      if (offscreenCreated) {
+        try { await chrome.offscreen.closeDocument(); } catch {}
+      }
       reject(new Error("Timeout extracting quota for " + provider.id));
     }, timeout);
 
@@ -292,12 +358,15 @@ function extractProviderQuota(provider, timeout) {
       },
       () => {
         if (chrome.runtime.lastError) {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
           error("extractProviderQuota: createDocument failed:", chrome.runtime.lastError.message);
-          chrome.offscreen.closeDocument();
           reject(new Error(chrome.runtime.lastError.message));
           return;
         }
+
+        offscreenCreated = true;
 
         chrome.runtime.sendMessage(
           {
@@ -305,9 +374,19 @@ function extractProviderQuota(provider, timeout) {
             providerId: provider.id,
             quotaUrl: provider.quotaUrl,
           },
-          (response) => {
+          async (response) => {
+            if (settled) {
+              if (offscreenCreated) {
+                try { await chrome.offscreen.closeDocument(); } catch {}
+              }
+              return;
+            }
+            settled = true;
             clearTimeout(timer);
-            chrome.offscreen.closeDocument();
+
+            if (offscreenCreated) {
+              try { await chrome.offscreen.closeDocument(); } catch {}
+            }
 
             if (chrome.runtime.lastError) {
               error("extractProviderQuota: sendMessage failed:", chrome.runtime.lastError.message);
@@ -338,17 +417,23 @@ function handleOpenConsole(msg) {
   }
 }
 
+async function enqueueRefreshAll() {
+  const enabled = await getEnabledPlans();
+  if (enabled.length === 0) return;
+  enqueueRefresh(enabled, null, 20000);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   log("onMessage:", message);
 
   if (message.action === "manual-refresh") {
-    if (ws && ws.readyState === WebSocket.OPEN && authenticated) {
-      sendStatus();
-      sendResponse({ success: true });
+    const providers = message.providers;
+    if (providers && Array.isArray(providers) && providers.length > 0) {
+      enqueueRefresh(providers, null, 20000);
     } else {
-      connect();
-      sendResponse({ success: false, reason: "not connected" });
+      enqueueRefreshAll();
     }
+    sendResponse({ success: true });
     return false;
   }
 
@@ -361,7 +446,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "auth-success-ack") {
-    log("popup acknowledged auth success");
     return false;
   }
 });
@@ -385,9 +469,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       connect();
     }
   }
+
+  if (alarm.name === AUTO_REFRESH_ALARM) {
+    log("auto-refresh alarm: enqueueing all");
+    enqueueRefreshAll();
+  }
 });
 
 chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_INTERVAL_MINUTES });
+chrome.alarms.create(AUTO_REFRESH_ALARM, { periodInMinutes: AUTO_REFRESH_INTERVAL_MINUTES });
 
 log("service worker starting, initial connect");
 connect();
+
+enqueueRefreshAll();
