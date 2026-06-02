@@ -21,8 +21,6 @@ public:
 
   bool init () override;
 
-  Q_INVOKABLE void showSettings ();
-
   CodingPlanModel *
   quota () const
   {
