@@ -253,8 +253,11 @@ WebSocketServer::onTextMessageReceived (const QString &message)
 void
 WebSocketServer::onClientDisconnected ()
 {
-  if (!m_client)
+  QWebSocket *senderSocket = qobject_cast<QWebSocket *> (sender ());
+
+  if (!m_client || (senderSocket && senderSocket != m_client))
     {
+      qInfo () << "[coding-plan][ws] stale disconnected callback ignored";
       return;
     }
 
