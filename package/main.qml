@@ -72,7 +72,14 @@ AppletItem {
     }
 
     function copyToClipboard(text) {
-        LP.Clipboard.text = text
+        clipboardHelper.text = text
+        clipboardHelper.selectAll()
+        clipboardHelper.copy()
+    }
+
+    TextEdit {
+        id: clipboardHelper
+        visible: false
     }
 
     Timer {
