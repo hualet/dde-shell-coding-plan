@@ -212,8 +212,6 @@ WebSocketServer::onNewConnection ()
 void
 WebSocketServer::onTextMessageReceived (const QString &message)
 {
-  m_heartbeatTimer->start (kHeartbeatTimeoutMs);
-
   const QJsonDocument doc = QJsonDocument::fromJson (message.toUtf8 ());
   if (doc.isNull () || !doc.isObject ())
     {
@@ -226,9 +224,26 @@ WebSocketServer::onTextMessageReceived (const QString &message)
 
   if (type == QStringLiteral ("auth"))
     {
+      m_heartbeatTimer->start (kHeartbeatTimeoutMs);
       handleAuthMessage (msg);
+      return;
     }
-  else if (type == QStringLiteral ("status"))
+
+  if (type == QStringLiteral ("heartbeat"))
+    {
+      m_heartbeatTimer->start (kHeartbeatTimeoutMs);
+      return;
+    }
+
+  if (!m_authenticated)
+    {
+      qWarning () << "[coding-plan][ws] rejecting unauthenticated message:" << type;
+      return;
+    }
+
+  m_heartbeatTimer->start (kHeartbeatTimeoutMs);
+
+  if (type == QStringLiteral ("status"))
     {
       handleStatusMessage (msg);
     }
