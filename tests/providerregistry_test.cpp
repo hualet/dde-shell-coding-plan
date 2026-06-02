@@ -35,6 +35,8 @@ private slots:
   void websocketServerHeaderExists ();
   void websocketServerCppExists ();
   void websocketServerHasHeartbeat ();
+  void websocketServerAuthGuardsNonAuthMessages ();
+  void websocketServerHandlesJsonHeartbeat ();
   void websocketServerHasTokenPermissions ();
   void websocketServerOldConnectionClose ();
   void browserExtProviderHeaderExists ();
@@ -432,6 +434,40 @@ ProviderRegistryTest::websocketServerHasHeartbeat ()
 }
 
 void
+ProviderRegistryTest::websocketServerAuthGuardsNonAuthMessages ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("rejecting unauthenticated message")));
+}
+
+void
+ProviderRegistryTest::websocketServerHandlesJsonHeartbeat ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("\"heartbeat\"")));
+
+  QFile ws (QStringLiteral (SOURCE_DIR "/extension/shared/ws-protocol.js"));
+  QVERIFY2 (ws.open (QIODevice::ReadOnly), qPrintable (ws.errorString ()));
+  const QString wsContent = QString::fromUtf8 (ws.readAll ());
+  QVERIFY (wsContent.contains (QStringLiteral ("MSG_TYPE_HEARTBEAT")));
+
+  QFile sw (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (sw.open (QIODevice::ReadOnly), qPrintable (sw.errorString ()));
+  const QString swContent = QString::fromUtf8 (sw.readAll ());
+  QVERIFY (swContent.contains (QStringLiteral ("MSG_TYPE_HEARTBEAT")));
+  QVERIFY (!swContent.contains (QStringLiteral ("ws.ping()")));
+  QVERIFY (!swContent.contains (QStringLiteral ("onpong")));
+}
+
+void
 ProviderRegistryTest::websocketServerHasTokenPermissions ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
@@ -539,8 +575,8 @@ ProviderRegistryTest::protocolProviderIdConsistency ()
   const QString swContent = QString::fromUtf8 (sw.readAll ());
 
   QVERIFY (swContent.contains (QStringLiteral ("codex")));
-  QVERIFY (swContent.contains (QStringLiteral ("kimi_code")));
-  QVERIFY (swContent.contains (QStringLiteral ("glm_coding")));
+  QVERIFY (swContent.contains (QStringLiteral ("\"kimi-code\"")));
+  QVERIFY (swContent.contains (QStringLiteral ("\"glm-coding\"")));
 
   QFile provider (QStringLiteral (SOURCE_DIR "/extension/providers/codex.js"));
   QVERIFY2 (provider.open (QIODevice::ReadOnly), qPrintable (provider.errorString ()));

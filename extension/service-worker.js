@@ -1,6 +1,6 @@
-import { codexProvider } from "../providers/codex.js";
-import { kimiCodeProvider } from "../providers/kimi-code.js";
-import { glmCodingProvider } from "../providers/glm-coding.js";
+import { codexProvider } from "./providers/codex.js";
+import { kimiCodeProvider } from "./providers/kimi-code.js";
+import { glmCodingProvider } from "./providers/glm-coding.js";
 
 import {
   MSG_TYPE_AUTH,
@@ -9,6 +9,7 @@ import {
   MSG_TYPE_REFRESH_RESULT,
   MSG_TYPE_REFRESH_PROGRESS,
   MSG_TYPE_OPEN_CONSOLE,
+  MSG_TYPE_HEARTBEAT,
   WS_URL,
   HEARTBEAT_INTERVAL_MS,
   ALARM_NAME,
@@ -66,7 +67,7 @@ function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.ping();
+      sendJson({ type: MSG_TYPE_HEARTBEAT });
     }
   }, HEARTBEAT_INTERVAL_MS);
 }
@@ -166,10 +167,6 @@ async function connect() {
       connectTimeoutTimer = null;
     }
     updateConnectionStatus("error");
-  };
-
-  ws.onpong = () => {
-    log("onpong received");
   };
 }
 

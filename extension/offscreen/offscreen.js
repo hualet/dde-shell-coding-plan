@@ -4,8 +4,8 @@ import { glmCodingProvider } from "../providers/glm-coding.js";
 
 const PROVIDERS = {
   codex: codexProvider,
-  kimi_code: kimiCodeProvider,
-  glm_coding: glmCodingProvider,
+  "kimi-code": kimiCodeProvider,
+  "glm-coding": glmCodingProvider,
 };
 
 const IFRAME_LOAD_TIMEOUT = 10000;
