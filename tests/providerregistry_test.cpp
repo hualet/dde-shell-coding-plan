@@ -155,6 +155,7 @@ ProviderRegistryTest::panelQmlTitleHasConsoleIcon ()
   QVERIFY (consoleIdx > titleIdx);
 
   QVERIFY (qml.contains (QStringLiteral ("quotaSnapshots[0].providerId")));
+  QVERIFY (qml.contains (QStringLiteral ("quotaSnapshots.length > 0")));
   QVERIFY (!qml.contains (QStringLiteral ("for (var i = 0; i < root.quotaSnapshots.length")));
 }
 
