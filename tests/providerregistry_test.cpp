@@ -506,35 +506,41 @@ ProviderRegistryTest::websocketServerDiscardClientNoDoubleDelete ()
 
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  const qsizetype discardStart = content.indexOf (QStringLiteral ("WebSocketServer::discardClient"));
-  QVERIFY (discardStart >= 0);
+  const auto extractMethodBody = [&content] (const QString &signature) -> QString {
+    const qsizetype start = content.indexOf (signature);
+    if (start < 0) return {};
+    const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), start);
+    if (braceStart < 0) return {};
+    int depth = 0;
+    qsizetype i = braceStart;
+    for (; i < content.size (); ++i)
+      {
+        if (content[i] == QLatin1Char ('{')) ++depth;
+        else if (content[i] == QLatin1Char ('}'))
+          {
+            --depth;
+            if (depth == 0) break;
+          }
+      }
+    return content.mid (start, i - start + 1);
+  };
 
-  const qsizetype discardEnd = content.indexOf (QLatin1Char ('}'), discardStart);
-  const QString discardBody = content.mid (discardStart, discardEnd - discardStart + 1);
-
+  const QString discardBody = extractMethodBody (
+      QStringLiteral ("WebSocketServer::discardClient"));
+  QVERIFY2 (!discardBody.isEmpty (), "discardClient method not found");
   QVERIFY (discardBody.contains (QStringLiteral ("m_client = nullptr")));
   QVERIFY (discardBody.contains (QStringLiteral ("disconnect")));
   QVERIFY (discardBody.contains (QStringLiteral ("old->close")));
   QVERIFY (discardBody.contains (QStringLiteral ("old->deleteLater")));
 
-  const qsizetype disconnStart = content.indexOf (QStringLiteral ("WebSocketServer::onClientDisconnected"));
-  QVERIFY (disconnStart >= 0);
-
-  const qsizetype disconnEnd = content.indexOf (QLatin1Char ('}'), disconnStart);
-  const QString disconnBody = content.mid (disconnStart, disconnEnd - disconnStart + 1);
-
-  QVERIFY (disconnBody.contains (QStringLiteral ("if (!m_client)")));
+  const QString disconnBody = extractMethodBody (
+      QStringLiteral ("WebSocketServer::onClientDisconnected"));
+  QVERIFY2 (!disconnBody.isEmpty (), "onClientDisconnected method not found");
+  QVERIFY (disconnBody.contains (QStringLiteral ("qobject_cast")));
+  QVERIFY (disconnBody.contains (QStringLiteral ("senderSocket")));
+  QVERIFY (disconnBody.contains (QStringLiteral ("senderSocket != m_client")));
   QVERIFY (disconnBody.contains (QStringLiteral ("disconnect")));
   QVERIFY (disconnBody.contains (QStringLiteral ("old->deleteLater")));
-
-  int deleteLaterCount = 0;
-  qsizetype pos = 0;
-  while ((pos = content.indexOf (QStringLiteral ("deleteLater"), pos)) != -1)
-    {
-      ++deleteLaterCount;
-      ++pos;
-    }
-  QVERIFY2 (deleteLaterCount >= 2, "deleteLater must appear in both discardClient and onClientDisconnected");
 }
 
 void
