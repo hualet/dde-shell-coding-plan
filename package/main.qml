@@ -498,12 +498,13 @@ AppletItem {
                                     }
 
                                     Label {
-                                        text: modelData.status === "ok" ? qsTr("Signed in")
-                                             : modelData.status === "authenticated" ? qsTr("Authenticated")
-                                             : modelData.status === "parse_error" ? qsTr("Parse failed")
-                                             : qsTr("Login needed")
-                                        color: root.severityColor(modelData.severity)
-                                    }
+                                         text: modelData.status === "ok" ? qsTr("Signed in")
+                                              : modelData.status === "authenticated" ? qsTr("Authenticated")
+                                              : modelData.status === "parse_error" ? qsTr("Parse failed")
+                                              : modelData.status === "rate_limited" ? qsTr("Rate limited")
+                                              : qsTr("Login needed")
+                                         color: root.severityColor(modelData.severity)
+                                     }
                                 }
 
                                 Label {
