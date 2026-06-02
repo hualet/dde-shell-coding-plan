@@ -39,6 +39,7 @@ private slots:
   void websocketServerHandlesJsonHeartbeat ();
   void websocketServerHasTokenPermissions ();
   void websocketServerOldConnectionClose ();
+  void websocketServerDiscardClientNoDoubleDelete ();
   void browserExtProviderHeaderExists ();
   void browserExtProviderCppExists ();
   void cmakeUsesWebSockets ();
@@ -488,15 +489,52 @@ ProviderRegistryTest::websocketServerOldConnectionClose ()
 
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  const qsizetype newConnStart = content.indexOf (QStringLiteral ("onNewConnection"));
-  QVERIFY (newConnStart >= 0);
+  QVERIFY (content.contains (QStringLiteral ("discardClient")));
+  QVERIFY (content.contains (QStringLiteral ("CloseCodeNormal")));
+}
 
-  const qsizetype closeCallPos = content.indexOf (QStringLiteral ("m_client->close"), newConnStart);
-  QVERIFY (closeCallPos >= newConnStart);
+void
+ProviderRegistryTest::websocketServerDiscardClientNoDoubleDelete ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/websocket_server.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+  QVERIFY (headerContent.contains (QStringLiteral ("discardClient")));
 
-  const QString closeBlock = content.mid (closeCallPos, 120);
-  QVERIFY (closeBlock.contains (QStringLiteral ("CloseCodeNormal"))
-           || closeBlock.contains (QStringLiteral ("close")));
+  QFile file (QStringLiteral (SOURCE_DIR "/src/websocket_server.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype discardStart = content.indexOf (QStringLiteral ("WebSocketServer::discardClient"));
+  QVERIFY (discardStart >= 0);
+
+  const qsizetype discardEnd = content.indexOf (QLatin1Char ('}'), discardStart);
+  const QString discardBody = content.mid (discardStart, discardEnd - discardStart + 1);
+
+  QVERIFY (discardBody.contains (QStringLiteral ("m_client = nullptr")));
+  QVERIFY (discardBody.contains (QStringLiteral ("disconnect")));
+  QVERIFY (discardBody.contains (QStringLiteral ("old->close")));
+  QVERIFY (discardBody.contains (QStringLiteral ("old->deleteLater")));
+
+  const qsizetype disconnStart = content.indexOf (QStringLiteral ("WebSocketServer::onClientDisconnected"));
+  QVERIFY (disconnStart >= 0);
+
+  const qsizetype disconnEnd = content.indexOf (QLatin1Char ('}'), disconnStart);
+  const QString disconnBody = content.mid (disconnStart, disconnEnd - disconnStart + 1);
+
+  QVERIFY (disconnBody.contains (QStringLiteral ("if (!m_client)")));
+  QVERIFY (disconnBody.contains (QStringLiteral ("disconnect")));
+  QVERIFY (disconnBody.contains (QStringLiteral ("old->deleteLater")));
+
+  int deleteLaterCount = 0;
+  qsizetype pos = 0;
+  while ((pos = content.indexOf (QStringLiteral ("deleteLater"), pos)) != -1)
+    {
+      ++deleteLaterCount;
+      ++pos;
+    }
+  QVERIFY2 (deleteLaterCount >= 2, "deleteLater must appear in both discardClient and onClientDisconnected");
 }
 
 void
