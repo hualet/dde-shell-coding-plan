@@ -7,7 +7,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import { fetchProviders, fetchSnapshots, isLoggedIn, refreshAll, openConsole, onDataChanged } from '../bridge';
+import { fetchProviders, fetchSnapshots, isAuthenticated, isUsable, refreshAll, openConsole, onDataChanged } from '../bridge';
 
 const severityColor = {
   normal: 'success',
@@ -17,7 +17,8 @@ const severityColor = {
 };
 
 function AgentCard({ provider, snapshot, onNavigate }) {
-  const loggedIn = isLoggedIn(snapshot);
+  const loggedIn = isAuthenticated(snapshot);
+  const usable = isUsable(snapshot);
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -61,10 +62,10 @@ function AgentCard({ provider, snapshot, onNavigate }) {
                 {provider.name}
               </Typography>
               <Chip
-                icon={loggedIn ? <CheckCircleIcon /> : <ErrorOutlineIcon />}
-                label={loggedIn ? '已登录' : '未登录'}
+                icon={usable ? <CheckCircleIcon /> : loggedIn ? <CheckCircleIcon /> : <ErrorOutlineIcon />}
+                label={usable ? '已登录' : loggedIn ? '受限' : '未登录'}
                 size="small"
-                color={loggedIn ? 'success' : 'default'}
+                color={usable ? 'success' : loggedIn ? 'warning' : 'default'}
                 variant={loggedIn ? 'filled' : 'outlined'}
                 sx={{ height: 24, fontSize: '0.75rem' }}
               />
@@ -72,6 +73,11 @@ function AgentCard({ provider, snapshot, onNavigate }) {
             {!loggedIn && snapshot && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {snapshot.message || '需要登录'}
+              </Typography>
+            )}
+            {loggedIn && !usable && snapshot && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {snapshot.message || '当前不可用'}
               </Typography>
             )}
           </Box>

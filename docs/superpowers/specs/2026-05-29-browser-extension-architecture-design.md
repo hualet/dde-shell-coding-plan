@@ -207,6 +207,45 @@ CodingPlanModel timer (5 min) → backgroundRefreshRequested()
 4. **No credential logging**: `qWarning` statements log status/ratio only, never full tokens or cookies.
 5. **Session cleanup**: On provider deletion, profile and credentials are cleared.
 
+### 6.1 ProviderWebView Origin Guard Design
+
+**Conclusion: Both paths enforce origin whitelisting.**
+
+- **Standalone** (`app/main.cpp`): `isAllowedOrigin()` checks `m_loginProviderConfig["allowedOrigins"]` at line 315-320. Extraction is blocked if the current page origin is not in the whitelist. This guard runs in `onPageLoadFinished()` before any `runJavaScript()` call.
+- **Panel** (`package/ProviderWebView.qml`): `isAllowedOrigin()` checks `root.allowedOrigins` at line 33-42. `_runExtraction()` (line 168-174) calls `isAllowedOrigin()` as its first check and immediately emits `extractionFailed()` with an error message if the check fails.
+- **Boundary rule**: The origin check is enforced at the Native/WebView boundary (the host that runs `runJavaScript`), not in the extractor script itself and not in the React frontend.
+
+### 6.2 OAuth Redirect State Machine Design
+
+**Conclusion: Current implementation is safe but conservative; explicit redirect tracking is not required for MVP.**
+
+When a provider uses OAuth-based login (e.g., Codex via `auth.openai.com`), the WebView navigates through redirect chains before landing back on the target domain:
+
+1. **Standalone** (`main.cpp`): `onPageLoadFinished()` checks `isAllowedOrigin()` first. If the OAuth redirect page is not in `allowedOrigins`, the handler returns early without extracting. This is correct behavior — the state machine should not act on intermediate OAuth pages. When the browser eventually redirects back to the allowed origin (e.g., `chatgpt.com`), `onPageLoadFinished()` resumes processing.
+
+2. **Panel** (`ProviderWebView.qml`): `_onNavigationFinished()` similarly checks `isAllowedOrigin()` before advancing the state machine. The `loginCheckTimer` (2.5s interval) probes the page state periodically, which naturally handles redirect delays.
+
+3. **Risk**: If an OAuth flow takes longer than the retry window, the state machine may time out. The current 6-retry × 1.2s mechanism provides ~7.2 seconds of tolerance, which is sufficient for normal OAuth flows.
+
+4. **Design decision**: No explicit redirect URL tracking is needed. The state machine treats any non-allowed-origin page as "still loading" and waits. This is the correct security posture — we should never inject scripts into OAuth intermediate pages.
+
+### 6.3 localStorage/Cookie Extractor Access Design
+
+**Conclusion: Extractor scripts access page-local storage on allowed origins only. This is an intentional design choice, documented here for security review.**
+
+Two extractor scripts read browser-local credentials:
+
+- **Kimi Code** (`kimiCodeExtractorScript()`): Reads `localStorage.getItem('access_token')` and uses it in a synchronous XHR to `/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`. This runs in the context of `kimi.com`, where the access token was set by Kimi's own frontend. The XHR is same-origin. This is equivalent to what the browser's own developer console would do.
+
+- **GLM Coding** (`glmCodingExtractorScript()`): Reads `document.cookie` to extract `bigmodel_token_production`, then uses it in a synchronous XHR to `/api/monitor/usage/quota/limit`. Same-origin context on `bigmodel.cn`.
+
+**Security properties**:
+1. These scripts only run after `isAllowedOrigin()` passes — they cannot execute on arbitrary pages.
+2. The tokens/cookies are never sent to any domain other than the one they originated from (same-origin XHR).
+3. The tokens/cookies are never logged, stored outside the WebView profile, or transmitted to the plugin's Native layer.
+4. Each provider has an isolated WebView profile, so one provider's cookies/localStorage are not accessible to another.
+5. This is the same security model as a browser extension content script operating on declared host permissions.
+
 ## 7. Error Handling
 
 | Scenario | Status | Behavior |
@@ -214,9 +253,25 @@ CodingPlanModel timer (5 min) → backgroundRefreshRequested()
 | User not logged in | `auth_error` | Show "login needed" message, preserve last good data. |
 | Page parse fails | `parse_error` | Retry up to 6 times with 1.2s delay, then show error. |
 | Network error | `network_error` | Show error, preserve last good data. |
-| Rate limited | `rate_limited` | Show error with retry suggestion. |
+| Rate limited | `rate_limited` | Treated as "authenticated but currently unavailable". `isAuthenticated()` returns true; `isUsable()` returns false. Show "rate limited" message with retry suggestion. |
 | Extraction returns null | `parse_error` | Same as parse fail: retry then error. |
 | Already logged in but no quota | `authenticated` | Show "waiting for quota" message. |
+
+### 7.1 Status Semantics: `isAuthenticated` vs `isUsable`
+
+The Web layer provides two helper functions to distinguish between authentication state and usability:
+
+- **`isAuthenticated(snapshot)`**: Returns true if the user has completed login at least once. Covers `ok`, `warning`, `exhausted`, `authenticated`, and `rate_limited`. Used for UI decisions like showing the quota detail page vs. the login page.
+- **`isUsable(snapshot)`**: Returns true only if the provider has fresh, usable quota data. Covers `ok`, `warning`, `exhausted`. Used for display decisions like showing the green "已登录" chip vs. the yellow "受限" chip.
+- **`isLoggedIn(snapshot)`**: Legacy alias for `isAuthenticated()`. Kept for backward compatibility.
+
+### 7.2 `setWebViewResult()` Status Handling
+
+`setWebViewResult()` reads the `status` field from the extraction result:
+- If `status === "parse_error"`, the snapshot is set to `SnapshotStatus::ParseError` with the result's `message`.
+- Otherwise (empty, `"ok"`, or any other value), the snapshot is set to `SnapshotStatus::Ok`.
+
+The standalone `MainWindow` already gates `setWebViewResult()` behind a `status === "ok"` check before calling it, so `parse_error` results typically reach `setProviderError()` instead. The status read in `setWebViewResult()` is a defense-in-depth measure for the panel path and any future callers.
 
 ## 8. Module File Map
 

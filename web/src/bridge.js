@@ -114,12 +114,24 @@ export async function setManualRatio(providerId, ratio) {
   return callBridge('setManualRatio', providerId, ratio);
 }
 
-export function isLoggedIn(snapshot) {
+export function isAuthenticated(snapshot) {
   if (!snapshot) return false;
   return snapshot.status === SnapshotStatus.Ok
     || snapshot.status === SnapshotStatus.Warning
     || snapshot.status === SnapshotStatus.Exhausted
-    || snapshot.status === SnapshotStatus.Authenticated;
+    || snapshot.status === SnapshotStatus.Authenticated
+    || snapshot.status === SnapshotStatus.RateLimited;
+}
+
+export function isUsable(snapshot) {
+  if (!snapshot) return false;
+  return snapshot.status === SnapshotStatus.Ok
+    || snapshot.status === SnapshotStatus.Warning
+    || snapshot.status === SnapshotStatus.Exhausted;
+}
+
+export function isLoggedIn(snapshot) {
+  return isAuthenticated(snapshot);
 }
 
 export { isQWebChannel, MOCK_PROVIDERS, MOCK_SNAPSHOTS };

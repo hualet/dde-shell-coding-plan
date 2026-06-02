@@ -268,8 +268,19 @@ CodingPlanModel::setWebViewResult (const QString &providerId,
             << "balanceText" << snapshot.balanceText
             << "fiveHourText" << snapshot.fiveHourBalanceText;
 
-  snapshot.status = SnapshotStatus::Ok;
-  snapshot.message = QStringLiteral ("WebView 读取");
+  const QString resultStatus = result.value (QStringLiteral ("status")).toString ();
+  if (resultStatus == QStringLiteral ("parse_error"))
+    {
+      snapshot.status = SnapshotStatus::ParseError;
+      snapshot.message = result.value (QStringLiteral ("message")).toString ().trimmed ().isEmpty ()
+                             ? QStringLiteral ("WebView 读取返回 parse_error")
+                             : result.value (QStringLiteral ("message")).toString ().trimmed ();
+    }
+  else
+    {
+      snapshot.status = SnapshotStatus::Ok;
+      snapshot.message = QStringLiteral ("WebView 读取");
+    }
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   m_snapshots[index] = snapshot;
   saveSnapshots ();

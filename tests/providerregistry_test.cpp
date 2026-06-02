@@ -41,6 +41,9 @@ private slots:
   void mainCppLoginGuardBlocksReload ();
   void standaloneLoginPageProbesQuotaUrlBeforeWaiting ();
   void nullResultDoesNotCrashAndEntersFailureCallback ();
+  void bridgeTypesConstantsMatchNativeEnums ();
+  void setWebViewResultRespectsParseErrorStatus ();
+  void bridgeHelpersAuthenticateRateLimited ();
 };
 
 void
@@ -726,6 +729,106 @@ ProviderRegistryTest::nullResultDoesNotCrashAndEntersFailureCallback ()
   QVERIFY (qml.contains (QStringLiteral ("function _finishExtractionFailure")));
   QVERIFY (qml.contains (QStringLiteral ("extractionFailed(message)")));
   QVERIFY (qml.contains (QStringLiteral ("_autoMode = false")));
+}
+
+void
+ProviderRegistryTest::bridgeTypesConstantsMatchNativeEnums ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/web/src/bridge-types.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("'webview'")));
+  QVERIFY (content.contains (QStringLiteral ("'official_api'")));
+  QVERIFY (content.contains (QStringLiteral ("'manual'")));
+  QVERIFY (content.contains (QStringLiteral ("'console_link'")));
+
+  QCOMPARE (sourceTypeToString (SourceType::WebView), QStringLiteral ("webview"));
+  QCOMPARE (sourceTypeToString (SourceType::OfficialApi), QStringLiteral ("official_api"));
+  QCOMPARE (sourceTypeToString (SourceType::Manual), QStringLiteral ("manual"));
+  QCOMPARE (sourceTypeToString (SourceType::ConsoleLink), QStringLiteral ("console_link"));
+
+  QVERIFY (content.contains (QStringLiteral ("'ok'")));
+  QVERIFY (content.contains (QStringLiteral ("'warning'")));
+  QVERIFY (content.contains (QStringLiteral ("'exhausted'")));
+  QVERIFY (content.contains (QStringLiteral ("'auth_error'")));
+  QVERIFY (content.contains (QStringLiteral ("'authenticated'")));
+  QVERIFY (content.contains (QStringLiteral ("'rate_limited'")));
+  QVERIFY (content.contains (QStringLiteral ("'unsupported'")));
+  QVERIFY (content.contains (QStringLiteral ("'parse_error'")));
+  QVERIFY (content.contains (QStringLiteral ("'network_error'")));
+
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::Ok), QStringLiteral ("ok"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::Warning), QStringLiteral ("warning"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::Exhausted), QStringLiteral ("exhausted"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::AuthError), QStringLiteral ("auth_error"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::Authenticated), QStringLiteral ("authenticated"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::RateLimited), QStringLiteral ("rate_limited"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::Unsupported), QStringLiteral ("unsupported"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::ParseError), QStringLiteral ("parse_error"));
+  QCOMPARE (snapshotStatusToString (SnapshotStatus::NetworkError), QStringLiteral ("network_error"));
+
+  QVERIFY (content.contains (QStringLiteral ("'normal'")));
+  QVERIFY (content.contains (QStringLiteral ("'warning'")));
+  QVERIFY (content.contains (QStringLiteral ("'critical'")));
+  QVERIFY (content.contains (QStringLiteral ("'error'")));
+
+  QCOMPARE (panelSeverityToString (PanelSeverity::Normal), QStringLiteral ("normal"));
+  QCOMPARE (panelSeverityToString (PanelSeverity::Warning), QStringLiteral ("warning"));
+  QCOMPARE (panelSeverityToString (PanelSeverity::Critical), QStringLiteral ("critical"));
+  QCOMPARE (panelSeverityToString (PanelSeverity::Error), QStringLiteral ("error"));
+}
+
+void
+ProviderRegistryTest::setWebViewResultRespectsParseErrorStatus ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype setWebViewStart = content.indexOf (
+      QStringLiteral ("CodingPlanModel::setWebViewResult"));
+  QVERIFY (setWebViewStart >= 0);
+
+  const qsizetype parseErrorCheck = content.indexOf (
+      QStringLiteral ("\"parse_error\""), setWebViewStart);
+  QVERIFY (parseErrorCheck > setWebViewStart);
+
+  const qsizetype okFallback = content.indexOf (
+      QStringLiteral ("SnapshotStatus::Ok"), parseErrorCheck);
+  QVERIFY (okFallback > parseErrorCheck);
+
+  QVERIFY (content.indexOf (QStringLiteral ("resultStatus"), setWebViewStart) > setWebViewStart);
+}
+
+void
+ProviderRegistryTest::bridgeHelpersAuthenticateRateLimited ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/web/src/bridge.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype isAuthenticatedFn = content.indexOf (
+      QStringLiteral ("export function isAuthenticated"));
+  QVERIFY (isAuthenticatedFn >= 0);
+
+  const qsizetype isUsableFn = content.indexOf (
+      QStringLiteral ("export function isUsable"));
+  QVERIFY (isUsableFn >= 0);
+  QVERIFY (isUsableFn > isAuthenticatedFn);
+
+  const qsizetype authEnd = content.indexOf (QLatin1Char ('}'),
+      content.indexOf (QLatin1Char ('{'), isAuthenticatedFn) + 1);
+  const QString authBody = content.mid (isAuthenticatedFn, authEnd - isAuthenticatedFn + 1);
+
+  QVERIFY (authBody.contains (QStringLiteral ("SnapshotStatus.RateLimited")));
+
+  const qsizetype usableEnd = content.indexOf (QLatin1Char ('}'),
+      content.indexOf (QLatin1Char ('{'), isUsableFn) + 1);
+  const QString usableBody = content.mid (isUsableFn, usableEnd - isUsableFn + 1);
+
+  QVERIFY (!usableBody.contains (QStringLiteral ("RateLimited")));
+  QVERIFY (usableBody.contains (QStringLiteral ("SnapshotStatus.Ok")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
