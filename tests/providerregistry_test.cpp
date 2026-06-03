@@ -144,7 +144,8 @@ ProviderRegistryTest::panelQmlTitleHasConsoleIcon ()
   const QString qml = QString::fromUtf8 (file.readAll ());
 
   QVERIFY (qml.contains (QStringLiteral ("consoleBtn")));
-  QVERIFY (qml.contains (QStringLiteral ("\\u2699")));
+  QVERIFY (qml.contains (QStringLiteral ("utilities-terminal-symbolic")));
+  QVERIFY (qml.contains (QStringLiteral ("Icon {")));
 
   const qsizetype titleIdx = qml.indexOf (QStringLiteral ("qsTr(\"Coding Plan\")"));
   QVERIFY (titleIdx >= 0);

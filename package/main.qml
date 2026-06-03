@@ -240,24 +240,26 @@ AppletItem {
                         Layout.fillWidth: true
                     }
 
-                    Button {
+                    Item {
                         id: consoleBtn
-                        implicitWidth: 24
-                        implicitHeight: 24
-                        padding: 0
-                        onClicked: {
-                            if (Applet.quota && root.quotaSnapshots.length > 0)
-                                Applet.quota.openConsole(root.quotaSnapshots[0].providerId)
+                        implicitWidth: 28
+                        implicitHeight: 28
+
+                        Icon {
+                            anchors.centerIn: parent
+                            name: "utilities-terminal-symbolic"
+                            width: 16
+                            height: 16
                         }
 
-                        background: Item {}
-
-                        contentItem: Text {
-                            text: "\u2699"
-                            font.pixelSize: 14
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            color: consoleBtn.hovered ? "#1976d2" : "#8b949e"
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (Applet.quota && root.quotaSnapshots.length > 0)
+                                    Applet.quota.openConsole(root.quotaSnapshots[0].providerId)
+                            }
                         }
                     }
 
