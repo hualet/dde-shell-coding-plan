@@ -1,52 +1,82 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Overview
 
-This repository contains a DDE Shell coding-plan quota plugin that communicates with a Chrome Extension via WebSocket.
-
-- `src/`: shared Qt/C++ core models, provider registry, WebSocket server, browser extension provider, and shell applet implementation.
-- `package/`: DDE Shell QML package files, including `main.qml`.
-- `extension/`: Chrome Extension (MV3) source code - service worker, offscreen document, providers, popup.
-- `tests/`: QtTest-based C++ tests for provider metadata and integration assumptions.
-- `docs/`: product and design notes, including `docs/prd.md` and `docs/superpowers/specs/`.
+DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quotas (Codex, Kimi Code, GLM Coding) in the deepin taskbar. The C++ applet runs a WebSocket server; a Chrome Extension (MV3) connects to it, loads provider quota pages in background tabs, extracts usage data via content scripts, and sends results back over the socket.
 
 ## Architecture
 
-The plugin uses a WebSocket server (127.0.0.1:18765) to communicate with a Chrome Extension. The Extension loads provider quota pages in offscreen documents, extracts quota data, and sends results back via WebSocket. No Qt WebEngine dependency is needed.
+- `src/codingplanapplet.h/cpp` — DDE Shell `DApplet` subclass, entry point. Creates `CodingPlanModel` and `WebSocketServer`.
+- `src/codingplanmodel.h/cpp` — QML-facing model. Holds `ProviderRegistry`, `QuotaSnapshot` list, wires `BrowserExtProvider` signals. Persisted snapshots via QSettings. Filters displayed providers by what the extension reports as enabled.
+- `src/websocket_server.h/cpp` — `QWebSocketServer` on `127.0.0.1:18765`. Token-based auth, JSON heartbeat, message routing. Only one client at a time (new connection discards old). Token file saved with owner-only permissions.
+- `src/browser_ext_provider.h/cpp` — Sends `refresh_request`/`open_console` to extension, receives `refresh_result`/`refresh_progress` back. Has per-request timeout.
+- `src/providerregistry.h/cpp` — Static provider definitions (`codex`, `kimi-code`, `glm-coding`) with `loginUrl`, `consoleUrl`, `SourceType::BrowserExt`. Also defines `QuotaSnapshot`, `SnapshotStatus`, `PanelSeverity` enums.
+- `package/main.qml` — Panel ring + popup UI. No Qt WebEngine import.
+- `extension/` — Chrome Extension MV3. `service-worker.js` manages WebSocket, queues refresh requests, extracts quota via tab-based content scripts for SPA providers. `shared/ws-protocol.js` is the single source of truth for message types and `WS_URL`.
+- `extension/providers/*.js` — Per-provider objects with `extractQuota` and `normalizeSnapshot`.
 
-- `src/websocket_server.h/cpp`: WebSocket server handling auth, message routing.
-- `src/browser_ext_provider.h/cpp`: Provider logic that sends refresh requests and processes results.
-- `extension/`: Chrome Extension with service worker, offscreen extraction, and per-provider JS extractors.
+### WebSocket Protocol
 
-## Build, Test, and Development Commands
+Message types are defined in `extension/shared/ws-protocol.js` and must stay in sync with `src/websocket_server.cpp`:
+- `auth` / `auth_result` — token-based handshake
+- `status` — extension reports `connected` + `availableProviders`
+- `refresh_request` / `refresh_result` / `refresh_progress` — quota refresh cycle
+- `open_console` — open a URL in browser tab
+- `heartbeat` — keep-alive (JSON, not WebSocket ping)
 
-- `cmake -S . -B build`: configure the Qt/CMake build.
-- `cmake --build build`: build the core library, applet, and tests.
-- `ctest --test-dir build --output-on-failure`: run registered QtTest tests.
+Provider IDs: `"codex"`, `"kimi-code"`, `"glm-coding"` — used identically on both sides.
 
-Qt6, DTK6, Qt WebSockets, and DDE Shell development packages are required for a full build.
+## Build & Test
 
-## Required Verification
+```bash
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
-After any code change, run the relevant compile and unit-test commands before handing off the work. For C++/Qt/QML changes, run `cmake -S . -B build`, `cmake --build build`, and `ctest --test-dir build --output-on-failure`. For Chrome Extension changes, there is no build step; validate affected files by loading `extension/` as an unpacked extension, and still run the C++ build/test commands when the change touches WebSocket protocol, provider contracts, or C++ integration. If an environment dependency prevents a command or manual check from running, report the exact command/check, failure reason, and remaining risk in the final handoff.
+- Requires: Qt6 (Core, Gui, Quick, QuickControls2, Test, WebSockets), DTK6, DDE Shell SDK.
+- Without DDE Shell SDK: only `coding-plan-core` static lib and tests build (applet is skipped).
+- No Qt WebEngine dependency — removed in the Chrome Extension migration.
 
-### Chrome Extension Development
+### Running a single test
 
-- Load `extension/` as an unpacked extension in `chrome://extensions` (developer mode).
-- No build step required - the extension uses plain ES modules.
+```bash
+./build/providerregistry_tests snapshotStatusMapsToPanelSeverity
+```
 
-## Coding Style & Naming Conventions
+Pass the slot name as a positional argument to the test binary.
 
-C++ targets use C++17 and Qt idioms. Keep SPDX headers on C++ files. Follow the existing brace and spacing style: return types on separate lines for definitions, two-space indentation, Qt containers, and `QStringLiteral` for stable strings. Use PascalCase for Qt classes and camelCase for methods and local variables.
+## Testing Conventions
 
-Extension JS uses ES modules, camelCase for functions/variables, PascalCase for provider objects.
+- Tests live in `tests/providerregistry_test.cpp`, registered via `add_test` in `CMakeLists.txt`.
+- Most tests are structural/contract assertions that read source files and verify presence/absence of specific strings. When adding features, add corresponding verification tests.
+- `SOURCE_DIR` is injected via `target_compile_definitions` — use `QStringLiteral(SOURCE_DIR "/...")` for file paths in tests.
+- Test class name: `ProviderRegistryTest`. Test methods are private slots with descriptive camelCase names.
 
-## Testing Guidelines
+## Chrome Extension
 
-Add C++ tests under `tests/` and register them in `CMakeLists.txt` with `add_test`. Use QtTest private slots named for behavior, for example `snapshotStatusMapsToPanelSeverity`. Prefer focused assertions over broad snapshot-style checks. Run `ctest --test-dir build --output-on-failure` before submitting changes.
+- No build step. Load `extension/` as unpacked extension in `chrome://extensions` (developer mode).
+- Uses ES modules (`"type": "module"` in manifest `background`).
+- All providers are SPA sites — quota extraction uses `chrome.tabs.create` + `chrome.scripting.executeScript` (not offscreen documents for current providers).
 
-## Commit & Pull Request Guidelines
+## Coding Style
 
-Recent history uses short imperative subjects and occasional Conventional Commit prefixes, such as `fix:` and `feat:`. Keep subjects concise and specific.
+- C++17, Qt idioms. SPDX headers on all files.
+- Return types on separate lines for definitions. Two-space indentation.
+- `QStringLiteral` for stable strings. Qt containers over STL where Qt API is used.
+- PascalCase for classes, camelCase for methods/variables.
+- `Q_PROPERTY` with space before parenthesis: `Q_PROPERTY (Type *name READ name NOTIFY nameChanged)`.
 
-Pull requests should include a brief summary, test/build results, linked issues when applicable, and screenshots or screen recordings for UI changes in QML. Note any environment limits, such as missing DDE Shell SDK.
+## Verification Checklist
+
+After any change:
+1. `cmake -S . -B build && cmake --build build`
+2. `ctest --test-dir build --output-on-failure`
+
+For extension-only changes, still run C++ build/test if the change touches WebSocket protocol, provider IDs, or message types — the test suite validates cross-side consistency.
+
+If environment deps are missing and a command fails, report the exact command, failure reason, and remaining risk.
+
+## Commit Style
+
+Short imperative subjects. Conventional Commit prefixes when applicable (`feat:`, `fix:`, `docs:`, `refactor:`).
