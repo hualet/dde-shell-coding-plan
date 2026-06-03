@@ -589,7 +589,7 @@ ProviderRegistryTest::websocketServerDiscardClientNoDoubleDelete ()
   QVERIFY (discardBody.contains (QStringLiteral ("old->deleteLater")));
 
   const QString disconnBody = extractMethodBody (
-      QStringLiteral ("WebSocketServer::onClientDisconnected"));
+      QStringLiteral ("WebSocketServer::onClientDisconnected ()"));
   QVERIFY2 (!disconnBody.isEmpty (), "onClientDisconnected method not found");
   QVERIFY (disconnBody.contains (QStringLiteral ("qobject_cast")));
   QVERIFY (disconnBody.contains (QStringLiteral ("senderSocket")));
