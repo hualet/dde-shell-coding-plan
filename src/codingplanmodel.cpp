@@ -85,6 +85,10 @@ CodingPlanModel::providers () const
   QVariantList result;
   for (const ProviderDefinition &provider : m_registry.providers ())
     {
+      if (!isProviderEnabled (provider.id))
+        {
+          continue;
+        }
       QVariantMap item;
       item.insert (QStringLiteral ("id"), provider.id);
       item.insert (QStringLiteral ("name"), provider.name);
@@ -102,6 +106,10 @@ CodingPlanModel::snapshots () const
   QVariantList result;
   for (const QuotaSnapshot &snapshot : m_snapshots)
     {
+      if (!isProviderEnabled (snapshot.providerId))
+        {
+          continue;
+        }
       result.append (snapshot.toVariantMap ());
     }
   return result;
@@ -110,7 +118,14 @@ CodingPlanModel::snapshots () const
 bool
 CodingPlanModel::hasSubscriptions () const
 {
-  return !m_snapshots.isEmpty ();
+  for (const QuotaSnapshot &snapshot : m_snapshots)
+    {
+      if (isProviderEnabled (snapshot.providerId))
+        {
+          return true;
+        }
+    }
+  return false;
 }
 
 QString
@@ -119,6 +134,10 @@ CodingPlanModel::tooltipText () const
   QStringList lines;
   for (const QuotaSnapshot &snapshot : m_snapshots)
     {
+      if (!isProviderEnabled (snapshot.providerId))
+        {
+          continue;
+        }
       const QString value
           = snapshot.remainingRatio >= 0
                 ? QStringLiteral ("%1%").arg (qRound (snapshot.remainingRatio * 100))
@@ -134,19 +153,11 @@ CodingPlanModel::refreshAll ()
 {
   if (m_browserExtProvider && m_browserExtProvider->isExtensionConnected ())
     {
-      QStringList providerIds;
-      for (const QuotaSnapshot &snapshot : m_snapshots)
+      const QStringList ids = m_hasProviderFilter
+          ? m_enabledProviders : m_registry.providerIds ();
+      if (!ids.isEmpty ())
         {
-          if (snapshot.status == SnapshotStatus::Ok
-              || snapshot.status == SnapshotStatus::Warning
-              || snapshot.status == SnapshotStatus::Exhausted)
-            {
-              providerIds.append (snapshot.providerId);
-            }
-        }
-      if (!providerIds.isEmpty ())
-        {
-          m_browserExtProvider->refreshProviders (providerIds);
+          m_browserExtProvider->refreshProviders (ids);
         }
     }
   else
@@ -161,6 +172,17 @@ CodingPlanModel::refreshProvider (const QString &providerId)
   const int index = snapshotIndex (providerId);
   if (index < 0 || !m_registry.contains (providerId))
     {
+      return;
+    }
+
+  if (!isProviderEnabled (providerId))
+    {
+      return;
+    }
+
+  if (m_browserExtProvider && m_browserExtProvider->isExtensionConnected ())
+    {
+      m_browserExtProvider->refreshProviders ({providerId});
       return;
     }
 
@@ -470,6 +492,8 @@ CodingPlanModel::setWebSocketServer (WebSocketServer *server)
                this, &CodingPlanModel::onRefreshFailed);
       connect (m_browserExtProvider, &BrowserExtProvider::extensionStatusChanged,
                this, &CodingPlanModel::onExtensionStatusChanged);
+      connect (m_browserExtProvider, &BrowserExtProvider::availableProvidersChanged,
+               this, &CodingPlanModel::onAvailableProvidersChanged);
     }
 }
 
@@ -499,7 +523,33 @@ void
 CodingPlanModel::onExtensionStatusChanged (bool connected)
 {
   Q_UNUSED (connected)
+  if (!connected)
+    {
+      m_enabledProviders.clear ();
+      m_hasProviderFilter = false;
+      emit providersChanged ();
+      emit snapshotsChanged ();
+    }
   emit extensionStatusChanged ();
+}
+
+void
+CodingPlanModel::onAvailableProvidersChanged (const QStringList &providers)
+{
+  m_enabledProviders = providers;
+  m_hasProviderFilter = true;
+  emit providersChanged ();
+  emit snapshotsChanged ();
+}
+
+bool
+CodingPlanModel::isProviderEnabled (const QString &providerId) const
+{
+  if (!m_hasProviderFilter)
+    {
+      return true;
+    }
+  return m_enabledProviders.contains (providerId);
 }
 
 void

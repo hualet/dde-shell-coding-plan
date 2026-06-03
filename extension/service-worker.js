@@ -23,6 +23,7 @@ import {
 import {
   getEnabledPlans,
   setQuotaCacheEntry,
+  PLANS_STORAGE_KEY,
 } from "./shared/storage.js";
 
 const PROVIDERS = {
@@ -64,8 +65,8 @@ function sendJson(msg) {
   }
 }
 
-function sendStatus() {
-  const availableProviders = Object.keys(PROVIDERS);
+async function sendStatus() {
+  const availableProviders = await getEnabledPlans();
   sendJson({
     type: MSG_TYPE_STATUS,
     connected: true,
@@ -187,7 +188,7 @@ function handleMessage(msg) {
   if (type === "auth_result") {
     handleAuthResult(msg);
   } else if (type === MSG_TYPE_REFRESH_REQUEST) {
-    handleRefreshRequest(msg);
+    handleRefreshRequest(msg).catch((err) => error("handleRefreshRequest failed", err));
   } else if (type === MSG_TYPE_OPEN_CONSOLE) {
     handleOpenConsole(msg);
   } else {
@@ -201,7 +202,7 @@ function handleAuthResult(msg) {
     log("handleAuthResult: auth success");
     updateConnectionStatus("connected");
     startHeartbeat();
-    sendStatus();
+    sendStatus().catch((err) => error("sendStatus failed", err));
   } else {
     authenticated = false;
     warn("handleAuthResult: auth failed:", msg.message);
@@ -338,7 +339,14 @@ async function handleRefreshRequest(msg) {
     return;
   }
 
-  enqueueRefresh(providerIds, requestId, timeout || 15000);
+  const enabled = await getEnabledPlans();
+  const filtered = providerIds.filter((id) => enabled.includes(id));
+  if (filtered.length === 0) {
+    log("handleRefreshRequest: no enabled providers after intersection");
+    return;
+  }
+
+  enqueueRefresh(filtered, requestId, timeout || 15000);
 }
 
 const SPA_PROVIDERS = new Set(["codex", "kimi-code", "glm-coding"]);
@@ -780,6 +788,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     authenticated = false;
     connect();
+  }
+
+  if (area === "local" && changes[PLANS_STORAGE_KEY]) {
+    if (authenticated && ws && ws.readyState === WebSocket.OPEN) {
+      log("plans changed, resending status");
+      sendStatus().catch((err) => error("sendStatus failed", err));
+    }
   }
 });
 

@@ -16,7 +16,7 @@ class BrowserExtProvider;
 class CodingPlanModel : public QObject
 {
   Q_OBJECT
-  Q_PROPERTY (QVariantList providers READ providers CONSTANT)
+  Q_PROPERTY (QVariantList providers READ providers NOTIFY providersChanged)
   Q_PROPERTY (QVariantList snapshots READ snapshots NOTIFY snapshotsChanged)
   Q_PROPERTY (bool hasSubscriptions READ hasSubscriptions NOTIFY snapshotsChanged)
   Q_PROPERTY (QString tooltipText READ tooltipText NOTIFY snapshotsChanged)
@@ -49,6 +49,7 @@ public:
   void setWebSocketServer (WebSocketServer *server);
 
 signals:
+  void providersChanged ();
   void snapshotsChanged ();
   void sessionCleared (const QString &providerId);
   void backgroundRefreshRequested ();
@@ -60,12 +61,14 @@ private slots:
   void onRefreshFailed (const QString &providerId,
                         const QString &message);
   void onExtensionStatusChanged (bool connected);
+  void onAvailableProvidersChanged (const QStringList &providers);
 
 private:
   QuotaSnapshot createInitialSnapshot (const ProviderDefinition &provider) const;
   void loadSnapshots ();
   void saveSnapshots () const;
   int snapshotIndex (const QString &providerId) const;
+  bool isProviderEnabled (const QString &providerId) const;
 
   ProviderRegistry m_registry;
   QList<QuotaSnapshot> m_snapshots;
@@ -74,4 +77,6 @@ private:
   QTimer m_debounceTimer;
   WebSocketServer *m_wsServer = nullptr;
   BrowserExtProvider *m_browserExtProvider = nullptr;
+  QStringList m_enabledProviders;
+  bool m_hasProviderFilter = false;
 };
