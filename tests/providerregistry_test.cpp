@@ -143,20 +143,13 @@ ProviderRegistryTest::panelQmlTitleHasConsoleIcon ()
 
   const QString qml = QString::fromUtf8 (file.readAll ());
 
-  QVERIFY (qml.contains (QStringLiteral ("consoleBtn")));
+  QVERIFY (!qml.contains (QStringLiteral ("consoleBtn")));
   QVERIFY (qml.contains (QStringLiteral ("utilities-terminal-symbolic")));
   QVERIFY (qml.contains (QStringLiteral ("DciIcon {")));
 
-  const qsizetype titleIdx = qml.indexOf (QStringLiteral ("qsTr(\"Coding Plan\")"));
-  QVERIFY (titleIdx >= 0);
+  QVERIFY (qml.contains (QStringLiteral ("modelData.providerId")));
 
-  const qsizetype consoleIdx = qml.indexOf (QStringLiteral ("consoleBtn"));
-  QVERIFY (consoleIdx >= 0);
-
-  QVERIFY (consoleIdx > titleIdx);
-
-  QVERIFY (qml.contains (QStringLiteral ("quotaSnapshots[0].providerId")));
-  QVERIFY (qml.contains (QStringLiteral ("quotaSnapshots.length > 0")));
+  QVERIFY (!qml.contains (QStringLiteral ("quotaSnapshots[0].providerId")));
   QVERIFY (!qml.contains (QStringLiteral ("for (var i = 0; i < root.quotaSnapshots.length")));
 }
 

@@ -20,6 +20,11 @@ AppletItem {
 
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
 
+    property Palette secondaryTextColor: Palette {
+        normal: Qt.rgba(0, 0, 0, 0.5)
+        normalDark: Qt.rgba(1, 1, 1, 0.5)
+    }
+
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
 
@@ -240,28 +245,6 @@ AppletItem {
                         Layout.fillWidth: true
                     }
 
-                    Item {
-                        id: consoleBtn
-                        implicitWidth: 28
-                        implicitHeight: 28
-
-                        DciIcon {
-                            anchors.centerIn: parent
-                            name: "utilities-terminal-symbolic"
-                            sourceSize: Qt.size(16, 16)
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (Applet.quota && root.quotaSnapshots.length > 0)
-                                    Applet.quota.openConsole(root.quotaSnapshots[0].providerId)
-                            }
-                        }
-                    }
-
                     Label {
                         visible: Applet.quota && Applet.quota.extensionConnected
                         text: qsTr("已连接")
@@ -272,7 +255,7 @@ AppletItem {
                     Label {
                         visible: !Applet.quota || !Applet.quota.extensionConnected
                         text: qsTr("未连接")
-                        color: "#8b949e"
+                        color: root.secondaryTextColor.color
                         font.pixelSize: 12
                     }
                 }
@@ -303,6 +286,27 @@ AppletItem {
                                         font.bold: true
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignHCenter
+                                    }
+
+                                    Item {
+                                        implicitWidth: 28
+                                        implicitHeight: 28
+
+                                        DciIcon {
+                                            anchors.centerIn: parent
+                                            name: "utilities-terminal-symbolic"
+                                            sourceSize: Qt.size(16, 16)
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (Applet.quota)
+                                                    Applet.quota.openConsole(modelData.providerId)
+                                            }
+                                        }
                                     }
                                 }
 
@@ -379,7 +383,7 @@ AppletItem {
                     visible: Applet.quota && !Applet.quota.extensionConnected
                     text: qsTr("请安装浏览器扩展并输入配对 Token 以连接。")
                     wrapMode: Text.WordWrap
-                    color: "#8b949e"
+                    color: root.secondaryTextColor.color
                     font.pixelSize: 12
                 }
             }
