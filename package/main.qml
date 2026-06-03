@@ -245,11 +245,10 @@ AppletItem {
                         implicitWidth: 28
                         implicitHeight: 28
 
-                        Icon {
+                        DciIcon {
                             anchors.centerIn: parent
                             name: "utilities-terminal-symbolic"
-                            width: 16
-                            height: 16
+                            sourceSize: Qt.size(16, 16)
                         }
 
                         MouseArea {
