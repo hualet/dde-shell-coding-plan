@@ -418,33 +418,54 @@ function extractViaTab(provider, timeout) {
               args: [provider.id],
             });
 
-            if (settled) {
-              cleanup();
-              return;
-            }
-            settled = true;
-            cleanup();
-
             const result = results?.[0]?.result;
             if (result && result.success) {
+              if (settled) { cleanup(); return; }
+              settled = true;
+              cleanup();
               log("extractViaTab: success for", provider.id);
               resolve(result.data);
-            } else {
-              const errMsg = result?.error || "Extraction failed in tab";
-              error("extractViaTab: failed for", provider.id, errMsg);
-              reject(new Error(errMsg));
-            }
-          } catch (err) {
-            if (settled) {
-              cleanup();
               return;
             }
+
+            if (!result || result.needsRetry) {
+              for (let attempt = 1; attempt <= 4; attempt++) {
+                await new Promise(r => setTimeout(r, 1500));
+                if (settled) { cleanup(); return; }
+
+                const retryResults = await chrome.scripting.executeScript({
+                  target: { tabId },
+                  func: extractQuotaInPage,
+                  args: [provider.id],
+                });
+
+                const retryResult = retryResults?.[0]?.result;
+                if (retryResult && retryResult.success) {
+                  if (settled) { cleanup(); return; }
+                  settled = true;
+                  cleanup();
+                  log("extractViaTab: success for", provider.id, "attempt", attempt + 1);
+                  resolve(retryResult.data);
+                  return;
+                }
+                if (!retryResult?.needsRetry) break;
+              }
+            }
+
+            if (settled) { cleanup(); return; }
+            settled = true;
+            cleanup();
+            const errMsg = result?.error || "Extraction failed in tab";
+            error("extractViaTab: failed for", provider.id, errMsg);
+            reject(new Error(errMsg));
+          } catch (err) {
+            if (settled) { cleanup(); return; }
             settled = true;
             cleanup();
             error("extractViaTab: executeScript error for", provider.id, err.message);
             reject(new Error(err.message));
           }
-        }, 3000);
+        }, 1500);
       };
 
       chrome.tabs.onUpdated.addListener(updatedListener);
@@ -511,7 +532,7 @@ function extractQuotaInPage(providerId) {
     if (isLogin) {
       return { success: false, error: "auth_error:未登录 Codex，请先在浏览器中登录 chatgpt.com" };
     }
-    return { success: false, error: "Could not find Codex quota info on rendered page" };
+    return { success: false, needsRetry: true, error: "Could not find Codex quota info on rendered page" };
   }
 
   const clamp = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1);

@@ -114,20 +114,23 @@ async function readQuotaApi() {
   });
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("auth_error:GLM 登录已过期");
-    }
-    throw new Error("Quota API returned " + response.status);
+    return null;
   }
 
-  const payload = await response.json();
+  const payload = await response.json().catch(() => null);
+  if (!payload) return null;
   const limits = payload?.data?.limits || [];
   const fiveHour = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 3);
   const weekly = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 6);
 
+  const weeklyQuota = limitToQuota(weekly);
+  const fiveHourQuota = limitToQuota(fiveHour);
+
+  if (!weeklyQuota && !fiveHourQuota) return null;
+
   return {
-    weekly: limitToQuota(weekly),
-    fiveHour: limitToQuota(fiveHour),
+    weekly: weeklyQuota,
+    fiveHour: fiveHourQuota,
   };
 }
 

@@ -106,29 +106,31 @@ async function readBillingApi() {
       "x-msh-platform": "web",
       "x-msh-version": "1.0.0",
       "x-language": "zh-CN",
+      "referer": "https://www.kimi.com/code/console",
+      "origin": "https://www.kimi.com",
     },
     credentials: "include",
     body: JSON.stringify({ scope: ["FEATURE_CODING"] }),
   });
 
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("auth_error:Kimi 登录已过期");
-    }
-    throw new Error("Billing API returned " + response.status);
+    return null;
   }
 
-  const payload = await response.json();
+  const payload = await response.json().catch(() => null);
+  if (!payload) return null;
   const usages = Array.isArray(payload.usages) ? payload.usages : [];
   const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
   if (!usage) return null;
 
-  return {
-    weekly: detailToQuota(usage.detail),
-    fiveHour: detailToQuota(
-      Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
-    ),
-  };
+  const weekly = detailToQuota(usage.detail);
+  const fiveHour = detailToQuota(
+    Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
+  );
+
+  if (!weekly && !fiveHour) return null;
+
+  return { weekly, fiveHour };
 }
 
 function readBillingFromDoc(doc) {
