@@ -36,6 +36,23 @@ function getSeverityClass(ratio) {
   return "ok";
 }
 
+function formatRatio(ratio) {
+  if (ratio < 0) return "不可用";
+  return Math.round(ratio * 100) + "%";
+}
+
+function buildQuotaRow(label, ratio, severity) {
+  const pct = ratio >= 0 ? Math.round(ratio * 100) : 0;
+  return `
+    <div class="quota-row">
+      <span class="quota-row-label">${label}</span>
+      <div class="quota-row-bar">
+        <div class="quota-bar-fill bar-${severity}" style="width:${pct}%"></div>
+      </div>
+      <span class="quota-row-value ratio-${severity}">${formatRatio(ratio)}</span>
+    </div>`;
+}
+
 function renderQuotaList(enabled, cache) {
   if (enabled.length === 0) {
     quotaList.innerHTML = `
@@ -57,7 +74,7 @@ function renderQuotaList(enabled, cache) {
     const cached = cache[planId];
     const card = document.createElement("div");
 
-    if (!cached || cached.status !== "ok") {
+    if (!cached || (cached.status !== "ok" && cached.status !== "parse_error")) {
       const message = cached?.message || "等待刷新";
       const stateClass = cached ? "error-state" : "unknown-state";
       card.className = `quota-card ${stateClass}`;
@@ -66,34 +83,35 @@ function renderQuotaList(enabled, cache) {
           <span class="quota-name">${provider.name}</span>
           <span class="quota-ratio ratio-unknown">--</span>
         </div>
-        <div class="quota-bar"><div class="quota-bar-fill bar-unknown" style="width:0%"></div></div>
         <div class="quota-meta">
-          <span>${message}</span>
+          <span class="error-msg">${message}</span>
           ${cached?.cachedAt ? '<span>' + new Date(cached.cachedAt).toLocaleTimeString() + '</span>' : ''}
         </div>`;
-    } else {
-      const ratio = cached.remainingRatio ?? -1;
-      const severity = getSeverityClass(ratio);
-      const pct = ratio >= 0 ? Math.round(ratio * 100) : 0;
-      const ratioText = ratio >= 0 ? pct + "%" : cached.balanceText || "--";
-
-      card.className = `quota-card ${severity}-state`;
-      let extra = "";
-      if (cached.fiveHourRemainingRatio >= 0) {
-        extra = `<div class="quota-five-hour">5h 窗口: ${Math.round(cached.fiveHourRemainingRatio * 100)}%</div>`;
-      }
-      card.innerHTML = `
-        <div class="quota-header">
-          <span class="quota-name">${provider.name}</span>
-          <span class="quota-ratio ratio-${severity}">${ratioText}</span>
-        </div>
-        <div class="quota-bar"><div class="quota-bar-fill bar-${severity}" style="width:${pct}%"></div></div>
-        <div class="quota-meta">
-          <span>${cached.message || ""}</span>
-          <span>${cached.cachedAt ? new Date(cached.cachedAt).toLocaleTimeString() : ""}</span>
-        </div>
-        ${extra}`;
+      quotaList.appendChild(card);
+      continue;
     }
+
+    const weeklyRatio = cached.weeklyRemainingRatio ?? cached.remainingRatio ?? -1;
+    const fiveHourRatio = cached.fiveHourRemainingRatio ?? -1;
+
+    const weeklySeverity = getSeverityClass(weeklyRatio);
+    const fiveHourSeverity = getSeverityClass(fiveHourRatio);
+
+    const mainRatio = weeklyRatio >= 0 ? weeklyRatio : fiveHourRatio;
+    const mainSeverity = getSeverityClass(mainRatio);
+
+    card.className = `quota-card ${mainSeverity}-state`;
+    card.innerHTML = `
+      <div class="quota-header">
+        <span class="quota-name">${provider.name}</span>
+        <span class="quota-ratio ratio-${mainSeverity}">${formatRatio(mainRatio)}</span>
+      </div>
+      ${buildQuotaRow("周额度", weeklyRatio, weeklySeverity)}
+      ${buildQuotaRow("5h 额度", fiveHourRatio, fiveHourSeverity)}
+      <div class="quota-meta">
+        <span>${cached.message || ""}</span>
+        <span>${cached.cachedAt ? new Date(cached.cachedAt).toLocaleTimeString() : ""}</span>
+      </div>`;
 
     quotaList.appendChild(card);
   }

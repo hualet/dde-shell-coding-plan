@@ -66,16 +66,17 @@ async function renderPlans() {
     if (!provider) continue;
 
     const cached = cache[planId];
-    let statusLabel = "等待刷新";
-    let ratioText = "";
+    let detailText = "等待刷新";
     if (cached) {
       if (cached.status === "ok") {
-        ratioText = cached.remainingRatio >= 0
-          ? Math.round(cached.remainingRatio * 100) + "%"
-          : cached.balanceText || "";
-        statusLabel = ratioText;
+        const parts = [];
+        const w = cached.weeklyRemainingRatio ?? cached.remainingRatio ?? -1;
+        const f = cached.fiveHourRemainingRatio ?? -1;
+        parts.push("周: " + (w >= 0 ? Math.round(w * 100) + "%" : "不可用"));
+        parts.push("5h: " + (f >= 0 ? Math.round(f * 100) + "%" : "不可用"));
+        detailText = parts.join(" | ");
       } else {
-        statusLabel = cached.message || cached.status || "异常";
+        detailText = cached.message || cached.status || "异常";
       }
     }
 
@@ -84,7 +85,7 @@ async function renderPlans() {
     card.innerHTML = `
       <div class="plan-info">
         <div class="plan-name">${provider.name}</div>
-        <div class="plan-id">${statusLabel}${cached && cached.cachedAt ? " · " + new Date(cached.cachedAt).toLocaleTimeString() : ""}</div>
+        <div class="plan-id">${detailText}${cached && cached.cachedAt ? " · " + new Date(cached.cachedAt).toLocaleTimeString() : ""}</div>
       </div>
       <div class="plan-actions">
         <button class="btn-secondary btn-refresh-plan" data-id="${planId}" style="font-size:12px;padding:5px 12px;">刷新</button>

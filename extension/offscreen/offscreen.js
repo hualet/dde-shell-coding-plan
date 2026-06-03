@@ -8,9 +8,7 @@ const PROVIDERS = {
   "glm-coding": glmCodingProvider,
 };
 
-const IFRAME_LOAD_TIMEOUT = 10000;
-const POLL_INTERVAL = 500;
-const MAX_POLL_ATTEMPTS = 20;
+const FETCH_TIMEOUT = 15000;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action !== "extract") return false;
@@ -23,88 +21,114 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  extractFromIframe(provider, quotaUrl)
+  extractViaFetch(provider, quotaUrl)
     .then((data) => sendResponse({ success: true, data }))
     .catch((err) => sendResponse({ success: false, error: err.message }));
 
   return true;
 });
 
-function extractFromIframe(provider, quotaUrl) {
-  return new Promise((resolve, reject) => {
-    const iframe = document.createElement("iframe");
-    iframe.style.width = "1024px";
-    iframe.style.height = "768px";
-    iframe.style.position = "absolute";
-    iframe.style.left = "-9999px";
+async function extractViaFetch(provider, quotaUrl) {
+  const html = await fetchWithTimeout(quotaUrl);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
 
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(`Timeout loading ${quotaUrl}`));
-    }, IFRAME_LOAD_TIMEOUT);
+  checkLoginRedirect(provider, doc, quotaUrl);
 
-    let pollAttempts = 0;
-
-    iframe.onload = () => {
-      pollForContent();
-    };
-
-    iframe.onerror = () => {
-      cleanup();
-      reject(new Error(`Failed to load ${quotaUrl}`));
-    };
-
-    function pollForContent() {
-      pollAttempts++;
-      try {
-        const doc = iframe.contentDocument;
-        if (!doc || !doc.body || !doc.body.innerHTML) {
-          if (pollAttempts < MAX_POLL_ATTEMPTS) {
-            setTimeout(pollForContent, POLL_INTERVAL);
-            return;
-          }
-          cleanup();
-          reject(new Error("Page content never appeared"));
-          return;
-        }
-
-        const extraction = provider.extractQuota(doc);
-        if (!extraction || !extraction.success) {
-          if (pollAttempts < MAX_POLL_ATTEMPTS) {
-            setTimeout(pollForContent, POLL_INTERVAL);
-            return;
-          }
-          const result = {
-            status: "parse_error",
-            message: extraction?.reason || "Could not parse quota data",
-            updatedAt: new Date().toISOString(),
-          };
-          cleanup();
-          resolve(provider.normalizeSnapshot(result));
-          return;
-        }
-
-        const normalized = provider.normalizeSnapshot(extraction.raw);
-        cleanup();
-        resolve(normalized);
-      } catch (err) {
-        if (pollAttempts < MAX_POLL_ATTEMPTS) {
-          setTimeout(pollForContent, POLL_INTERVAL);
-          return;
-        }
-        cleanup();
-        reject(err);
-      }
+  if (provider.extractViaApi) {
+    const apiResult = await provider.extractViaApi(html, doc);
+    if (apiResult) {
+      return provider.normalizeSnapshot(apiResult);
     }
+  }
 
-    function cleanup() {
-      clearTimeout(timeout);
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    }
+  const extraction = provider.extractQuota(doc);
+  if (extraction && extraction.success) {
+    return provider.normalizeSnapshot(extraction.raw);
+  }
 
-    document.body.appendChild(iframe);
-    iframe.src = quotaUrl;
+  const textResult = extractFromRawText(provider, html);
+  if (textResult) {
+    return provider.normalizeSnapshot(textResult);
+  }
+
+  const reason = extraction?.reason || "Could not parse quota data";
+  const isLogin = detectLoginState(provider, html);
+  if (isLogin) {
+    return provider.normalizeSnapshot({
+      status: "auth_error",
+      message: "登录已过期或未登录，请在浏览器中访问 " + provider.loginUrl + " 完成登录",
+    });
+  }
+
+  return provider.normalizeSnapshot({
+    status: "parse_error",
+    message: reason,
   });
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+  try {
+    const response = await fetch(url, {
+      credentials: "include",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} for ${url}`);
+    }
+
+    return await response.text();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function checkLoginRedirect(provider, doc, quotaUrl) {
+  const title = (doc.title || "").toLowerCase();
+  const bodyText = (doc.body ? doc.body.innerText : "").toLowerCase();
+
+  if (title.includes("login") || title.includes("sign in") || title.includes("登录")) {
+    throw new Error("auth_error:页面重定向到登录页");
+  }
+
+  if (bodyText.includes("log in to continue") || bodyText.includes("sign in to continue")) {
+    throw new Error("auth_error:需要登录才能访问");
+  }
+}
+
+function detectLoginState(provider, html) {
+  const lower = html.toLowerCase();
+  const loginIndicators = [
+    "login",
+    "sign in",
+    "sign-in",
+    "auth/login",
+    "authentication",
+    "登录",
+  ];
+
+  for (const indicator of loginIndicators) {
+    if (lower.includes(indicator)) return true;
+  }
+
+  return false;
+}
+
+function extractFromRawText(provider, html) {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const lines = text.split(/[\n.]+/).map((l) => l.trim()).filter((l) => l.length > 0);
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const extraction = provider.extractQuota(doc);
+  if (extraction && extraction.success) {
+    return extraction.raw;
+  }
+
+  return null;
 }

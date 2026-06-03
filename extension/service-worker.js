@@ -300,11 +300,13 @@ function buildCacheData(provider, result) {
     source: "browser_ext",
     status: result.status,
     remainingRatio: result.remainingRatio ?? -1,
+    weeklyRemainingRatio: result.weeklyRemainingRatio ?? result.remainingRatio ?? -1,
+    weeklyBalanceText: result.weeklyBalanceText || result.balanceText || "",
     fiveHourRemainingRatio: result.fiveHourRemainingRatio ?? -1,
-    balanceText: result.balanceText || "",
     fiveHourBalanceText: result.fiveHourBalanceText || "",
-    used: result.used ?? -1,
-    total: result.total ?? -1,
+    balanceText: result.balanceText || "",
+    used: result.used ?? result.weeklyUsed ?? -1,
+    total: result.total ?? result.weeklyTotal ?? -1,
     unit: result.unit || "credit",
     updatedAt: new Date().toISOString(),
     consoleUrl: provider.consoleUrl || "",
@@ -313,12 +315,14 @@ function buildCacheData(provider, result) {
 }
 
 function buildErrorCacheData(provider, errMsg) {
+  const isAuthError = typeof errMsg === "string" && errMsg.startsWith("auth_error:");
+  const message = isAuthError ? errMsg.replace("auth_error:", "") : (errMsg || "刷新失败");
   return {
     providerId: provider.id,
     providerName: provider.name,
     source: "browser_ext",
-    status: "network_error",
-    message: errMsg || "刷新失败",
+    status: isAuthError ? "auth_error" : "network_error",
+    message,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -353,8 +357,8 @@ function extractProviderQuota(provider, timeout) {
     chrome.offscreen.createDocument(
       {
         url: "offscreen/offscreen.html",
-        reasons: ["IFRAME_SCRIPTING"],
-        justification: "Load quota pages to extract usage data",
+        reasons: ["DOM_SCRAPING"],
+        justification: "Fetch and parse quota pages to extract usage data",
       },
       () => {
         if (chrome.runtime.lastError) {

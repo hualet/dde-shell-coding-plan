@@ -47,16 +47,14 @@ export const codexProvider = {
     };
 
     if (raw.weekly) {
+      result.weeklyRemainingRatio = raw.weekly.ratio;
+      result.weeklyBalanceText = raw.weekly.text;
       result.remainingRatio = raw.weekly.ratio;
       result.balanceText = raw.weekly.text;
     }
     if (raw.fiveHour) {
       result.fiveHourRemainingRatio = raw.fiveHour.ratio;
       result.fiveHourBalanceText = raw.fiveHour.text;
-      if (!raw.weekly) {
-        result.remainingRatio = raw.fiveHour.ratio;
-        result.balanceText = raw.fiveHour.text;
-      }
     }
 
     if (!raw.weekly && !raw.fiveHour) {

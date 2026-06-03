@@ -7,11 +7,19 @@ export const glmCodingProvider = {
   allowedOrigin: "https://bigmodel.cn",
   loginIndicators: [".user-info", "[data-testid='user-menu']"],
 
+  async extractViaApi(html, doc) {
+    try {
+      return await readQuotaApi();
+    } catch {
+      return null;
+    }
+  },
+
   extractQuota(doc) {
     let parsed = null;
 
     try {
-      parsed = readQuotaLimit(doc);
+      parsed = readQuotaFromDoc(doc);
     } catch {
       parsed = null;
     }
@@ -43,6 +51,10 @@ export const glmCodingProvider = {
     };
 
     if (raw.weekly) {
+      result.weeklyRemainingRatio = raw.weekly.ratio;
+      result.weeklyBalanceText = raw.weekly.text;
+      result.weeklyUsed = raw.weekly.used ?? -1;
+      result.weeklyTotal = raw.weekly.total ?? -1;
       result.remainingRatio = raw.weekly.ratio;
       result.balanceText = raw.weekly.text;
       if (raw.weekly.used >= 0) result.used = raw.weekly.used;
@@ -52,10 +64,6 @@ export const glmCodingProvider = {
     if (raw.fiveHour) {
       result.fiveHourRemainingRatio = raw.fiveHour.ratio;
       result.fiveHourBalanceText = raw.fiveHour.text;
-      if (!raw.weekly) {
-        result.remainingRatio = raw.fiveHour.ratio;
-        result.balanceText = raw.fiveHour.text;
-      }
     }
 
     if (!raw.weekly && !raw.fiveHour) {
@@ -104,7 +112,30 @@ function limitToQuota(limit) {
   };
 }
 
-function readQuotaLimit(doc) {
+async function readQuotaApi() {
+  const response = await fetch("https://bigmodel.cn/api/monitor/usage/quota/limit", {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("auth_error:GLM 登录已过期");
+    }
+    throw new Error("Quota API returned " + response.status);
+  }
+
+  const payload = await response.json();
+  const limits = payload?.data?.limits || [];
+  const fiveHour = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 3);
+  const weekly = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 6);
+
+  return {
+    weekly: limitToQuota(weekly),
+    fiveHour: limitToQuota(fiveHour),
+  };
+}
+
+function readQuotaFromDoc(doc) {
   const token = cookieValue(doc, "bigmodel_token_production");
   if (!token) return null;
 

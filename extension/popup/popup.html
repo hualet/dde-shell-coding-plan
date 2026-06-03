@@ -51,7 +51,7 @@
 
   .quota-header {
     display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .quota-name { font-weight: 600; font-size: 13px; }
   .quota-ratio {
@@ -62,27 +62,31 @@
   .ratio-critical { color: #ea5455; }
   .ratio-unknown { color: #8b949e; }
 
-  .quota-bar {
-    height: 6px; background: #e5e7eb; border-radius: 3px; margin-bottom: 6px;
-    overflow: hidden;
+  .quota-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  }
+  .quota-row-label {
+    font-size: 11px; color: #6b7280; width: 52px; flex-shrink: 0;
+  }
+  .quota-row-bar {
+    flex: 1; height: 5px; background: #e5e7eb; border-radius: 2.5px; overflow: hidden;
   }
   .quota-bar-fill {
-    height: 100%; border-radius: 3px; transition: width 0.4s ease;
+    height: 100%; border-radius: 2.5px; transition: width 0.4s ease;
   }
   .bar-ok { background: #28c76f; }
   .bar-warn { background: #ff9f43; }
   .bar-critical { background: #ea5455; }
   .bar-unknown { background: #d1d5db; }
+  .quota-row-value {
+    font-size: 11px; font-weight: 600; width: 42px; text-align: right; flex-shrink: 0;
+  }
 
   .quota-meta {
     display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;
+    margin-top: 6px;
   }
-  .quota-message {
-    font-size: 11px; color: #ea5455; margin-top: 4px;
-  }
-  .quota-five-hour {
-    font-size: 11px; color: #6b7280; margin-top: 2px;
-  }
+  .error-msg { color: #ea5455; }
 
   .empty-state {
     text-align: center; padding: 24px; color: #9ca3af;
