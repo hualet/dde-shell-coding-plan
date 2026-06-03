@@ -29,6 +29,7 @@ signals:
   void refreshFailed (const QString &providerId,
                       const QString &message);
   void extensionStatusChanged (bool connected);
+  void availableProvidersChanged (const QStringList &providers);
 
 private slots:
   void onRefreshResult (const QString &requestId,
@@ -43,6 +44,8 @@ private slots:
   void onAuthSuccess ();
   void onAuthFailed ();
   void onRefreshTimeout ();
+  void onStatusReceived (bool connected,
+                         const QStringList &availableProviders);
 
 private:
   QuotaSnapshot resultToSnapshot (const QString &providerId,

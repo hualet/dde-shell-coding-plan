@@ -33,6 +33,8 @@ BrowserExtProvider::BrowserExtProvider (WebSocketServer *wsServer,
            this, &BrowserExtProvider::onAuthSuccess);
   connect (m_wsServer, &WebSocketServer::authFailed,
            this, &BrowserExtProvider::onAuthFailed);
+  connect (m_wsServer, &WebSocketServer::statusReceived,
+           this, &BrowserExtProvider::onStatusReceived);
 }
 
 void
@@ -256,6 +258,14 @@ BrowserExtProvider::resultToSnapshot (const QString &providerId,
     }
 
   return snapshot;
+}
+
+void
+BrowserExtProvider::onStatusReceived (bool connected,
+                                      const QStringList &availableProviders)
+{
+  Q_UNUSED (connected)
+  emit availableProvidersChanged (availableProviders);
 }
 
 void

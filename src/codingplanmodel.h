@@ -60,12 +60,14 @@ private slots:
   void onRefreshFailed (const QString &providerId,
                         const QString &message);
   void onExtensionStatusChanged (bool connected);
+  void onAvailableProvidersChanged (const QStringList &providers);
 
 private:
   QuotaSnapshot createInitialSnapshot (const ProviderDefinition &provider) const;
   void loadSnapshots ();
   void saveSnapshots () const;
   int snapshotIndex (const QString &providerId) const;
+  bool isProviderEnabled (const QString &providerId) const;
 
   ProviderRegistry m_registry;
   QList<QuotaSnapshot> m_snapshots;
@@ -74,4 +76,5 @@ private:
   QTimer m_debounceTimer;
   WebSocketServer *m_wsServer = nullptr;
   BrowserExtProvider *m_browserExtProvider = nullptr;
+  QStringList m_enabledProviders;
 };

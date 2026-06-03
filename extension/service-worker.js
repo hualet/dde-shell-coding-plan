@@ -23,6 +23,7 @@ import {
 import {
   getEnabledPlans,
   setQuotaCacheEntry,
+  PLANS_STORAGE_KEY,
 } from "./shared/storage.js";
 
 const PROVIDERS = {
@@ -64,8 +65,8 @@ function sendJson(msg) {
   }
 }
 
-function sendStatus() {
-  const availableProviders = Object.keys(PROVIDERS);
+async function sendStatus() {
+  const availableProviders = await getEnabledPlans();
   sendJson({
     type: MSG_TYPE_STATUS,
     connected: true,
@@ -778,6 +779,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     authenticated = false;
     connect();
+  }
+
+  if (area === "local" && changes[PLANS_STORAGE_KEY]) {
+    if (authenticated && ws && ws.readyState === WebSocket.OPEN) {
+      log("plans changed, resending status");
+      sendStatus();
+    }
   }
 });
 
