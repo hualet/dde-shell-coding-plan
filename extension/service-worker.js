@@ -339,7 +339,7 @@ async function handleRefreshRequest(msg) {
   enqueueRefresh(providerIds, requestId, timeout || 15000);
 }
 
-const SPA_PROVIDERS = new Set(["codex", "kimi-code"]);
+const SPA_PROVIDERS = new Set(["codex", "kimi-code", "glm-coding"]);
 
 function extractProviderQuota(provider, timeout) {
   if (SPA_PROVIDERS.has(provider.id)) {
@@ -571,6 +571,51 @@ function extractQuotaInPage(providerId) {
             weekly: weekly != null ? weekly.ratio : null,
             fiveHour: fiveHour != null ? fiveHour.ratio : null,
           };
+        } catch {
+          return null;
+        }
+      }
+    },
+    "glm-coding": {
+      providerId: "glm-coding",
+      providerName: "GLM Coding",
+      extract(doc) {
+        const cookiePrefix = "bigmodel_token_production=";
+        const parts = document.cookie.split(";");
+        let token = "";
+        for (const part of parts) {
+          const trimmed = part.trim();
+          if (trimmed.indexOf(cookiePrefix) === 0) {
+            token = decodeURIComponent(trimmed.slice(cookiePrefix.length));
+            break;
+          }
+        }
+        if (!token) return null;
+
+        try {
+          const request = new XMLHttpRequest();
+          request.open("GET", "/api/monitor/usage/quota/limit", false);
+          request.setRequestHeader("Authorization", token);
+          request.send();
+
+          if (request.status < 200 || request.status >= 300) return null;
+
+          const payload = JSON.parse(request.responseText);
+          const limits = payload?.data?.limits || [];
+          const fiveHourLimit = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 3);
+          const weeklyLimit = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 6);
+
+          const toRatio = (limit) => {
+            if (!limit) return null;
+            const usedRatio = Number(limit.percentage) / 100;
+            if (!Number.isFinite(usedRatio)) return null;
+            return Math.max(0, Math.min(1, 1 - usedRatio));
+          };
+
+          const weekly = toRatio(weeklyLimit);
+          const fiveHour = toRatio(fiveHourLimit);
+          if (weekly == null && fiveHour == null) return null;
+          return { weekly, fiveHour };
         } catch {
           return null;
         }
