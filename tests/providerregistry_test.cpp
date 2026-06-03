@@ -14,8 +14,11 @@ private slots:
   void builtInBrowserExtProvidersCoverMvpPlatforms ();
   void snapshotStatusMapsToPanelSeverity ();
   void panelQmlLeftClickOpensStatusPopup ();
-  void panelQmlRightClickOpensSettingsMenu ();
-  void appletLaunchesStandaloneSettingsWindow ();
+  void panelQmlNoSettingsMenuOrRightClick ();
+  void panelQmlNoManualInput ();
+  void panelQmlTitleHasConsoleIcon ();
+  void appletHasNoShowSettings ();
+  void modelHasNoSetManualRatio ();
   void codexProviderUrlsMatchAnalyticsUsage ();
   void kimiCodeProviderUrlsMatchCodeConsole ();
   void glmCodingProviderUrlsMatchCodingPlanUsage ();
@@ -26,7 +29,6 @@ private slots:
   void browserExtResultParsesCorrectly ();
   void sourceTypeIsBrowserExt ();
   void panelQmlShowsExtensionConnectionStatus ();
-  void panelQmlHasManualInput ();
   void panelQmlHasTokenDisplay ();
   void extensionManifestExists ();
   void extensionServiceWorkerExists ();
@@ -107,32 +109,78 @@ ProviderRegistryTest::panelQmlLeftClickOpensStatusPopup ()
 }
 
 void
-ProviderRegistryTest::panelQmlRightClickOpensSettingsMenu ()
+ProviderRegistryTest::panelQmlNoSettingsMenuOrRightClick ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
 
   const QString qml = QString::fromUtf8 (file.readAll ());
-  QVERIFY (qml.contains (QStringLiteral ("import Qt.labs.platform 1.1 as LP")));
-  QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.RightButton")));
-  QVERIFY (qml.contains (QStringLiteral ("settingsMenuLoader.item.open()")));
-  QVERIFY (qml.contains (QStringLiteral ("text: qsTr(\"设置\")")));
-  QVERIFY (qml.contains (QStringLiteral ("Applet.showSettings()")));
+  QVERIFY (!qml.contains (QStringLiteral ("Qt.labs.platform")));
+  QVERIFY (!qml.contains (QStringLiteral ("acceptedButtons: Qt.RightButton")));
+  QVERIFY (!qml.contains (QStringLiteral ("settingsMenuLoader")));
+  QVERIFY (!qml.contains (QStringLiteral ("LP.Menu")));
+  QVERIFY (!qml.contains (QStringLiteral ("showSettings")));
 }
 
 void
-ProviderRegistryTest::appletLaunchesStandaloneSettingsWindow ()
+ProviderRegistryTest::panelQmlNoManualInput ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (!qml.contains (QStringLiteral ("手动录入")));
+  QVERIFY (!qml.contains (QStringLiteral ("setManualRatio")));
+  QVERIFY (!qml.contains (QStringLiteral ("manualInputPopup")));
+  QVERIFY (!qml.contains (QStringLiteral ("selectedProvider")));
+}
+
+void
+ProviderRegistryTest::panelQmlTitleHasConsoleIcon ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (!qml.contains (QStringLiteral ("consoleBtn")));
+  QVERIFY (qml.contains (QStringLiteral ("utilities-terminal-symbolic")));
+  QVERIFY (qml.contains (QStringLiteral ("DciIcon {")));
+
+  QVERIFY (qml.contains (QStringLiteral ("modelData.providerId")));
+
+  QVERIFY (!qml.contains (QStringLiteral ("quotaSnapshots[0].providerId")));
+  QVERIFY (!qml.contains (QStringLiteral ("for (var i = 0; i < root.quotaSnapshots.length")));
+}
+
+void
+ProviderRegistryTest::appletHasNoShowSettings ()
 {
   QFile header (QStringLiteral (SOURCE_DIR "/src/codingplanapplet.h"));
   QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
   const QString headerContent = QString::fromUtf8 (header.readAll ());
-  QVERIFY (headerContent.contains (QStringLiteral ("Q_INVOKABLE")));
-  QVERIFY (headerContent.contains (QStringLiteral ("showSettings")));
+  QVERIFY (!headerContent.contains (QStringLiteral ("showSettings")));
 
   QFile source (QStringLiteral (SOURCE_DIR "/src/codingplanapplet.cpp"));
   QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
   const QString sourceContent = QString::fromUtf8 (source.readAll ());
-  QVERIFY (sourceContent.contains (QStringLiteral ("QProcess::startDetached")));
+  QVERIFY (!sourceContent.contains (QStringLiteral ("showSettings")));
+  QVERIFY (!sourceContent.contains (QStringLiteral ("QProcess::startDetached")));
+}
+
+void
+ProviderRegistryTest::modelHasNoSetManualRatio ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+  QVERIFY (!headerContent.contains (QStringLiteral ("setManualRatio")));
+
+  QFile source (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
+  const QString sourceContent = QString::fromUtf8 (source.readAll ());
+  QVERIFY (!sourceContent.contains (QStringLiteral ("setManualRatio")));
+  QVERIFY (!sourceContent.contains (QStringLiteral ("手动录入")));
 }
 
 void
@@ -303,17 +351,6 @@ ProviderRegistryTest::panelQmlShowsExtensionConnectionStatus ()
   QVERIFY (qml.contains (QStringLiteral ("extensionConnected")));
   QVERIFY (qml.contains (QStringLiteral ("已连接")));
   QVERIFY (qml.contains (QStringLiteral ("未连接")));
-}
-
-void
-ProviderRegistryTest::panelQmlHasManualInput ()
-{
-  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-
-  const QString qml = QString::fromUtf8 (file.readAll ());
-  QVERIFY (qml.contains (QStringLiteral ("手动录入")));
-  QVERIFY (qml.contains (QStringLiteral ("setManualRatio")));
 }
 
 void

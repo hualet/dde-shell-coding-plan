@@ -4,7 +4,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import Qt.labs.platform 1.1 as LP
 import org.deepin.ds 1.0
 import org.deepin.ds.dock 1.0
 import org.deepin.dtk 1.0
@@ -18,8 +17,13 @@ AppletItem {
     readonly property int dockSize: Panel.rootObject.dockSize || 48
     readonly property var quotaSnapshots: Applet.quota ? Applet.quota.snapshots : []
     readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
-    property var selectedProvider: ({})
+
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
+
+    property Palette secondaryTextColor: Palette {
+        normal: Qt.rgba(0, 0, 0, 0.5)
+        normalDark: Qt.rgba(1, 1, 1, 0.5)
+    }
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
@@ -127,34 +131,6 @@ AppletItem {
                 popup.open()
             }
             toolTip.close()
-        }
-    }
-
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.RightButton
-        preventStealing: true
-
-        onClicked: function(mouse) {
-            popup.close()
-            settingsMenuLoader.active = true
-            settingsMenuLoader.item.open()
-            mouse.accepted = true
-        }
-
-        onPressed: function(mouse) {
-            mouse.accepted = true
-        }
-    }
-
-    Loader {
-        id: settingsMenuLoader
-        active: false
-        sourceComponent: LP.Menu {
-            LP.MenuItem {
-                text: qsTr("设置")
-                onTriggered: Applet.showSettings()
-            }
         }
     }
 
@@ -279,7 +255,7 @@ AppletItem {
                     Label {
                         visible: !Applet.quota || !Applet.quota.extensionConnected
                         text: qsTr("未连接")
-                        color: "#8b949e"
+                        color: root.secondaryTextColor.color
                         font.pixelSize: 12
                     }
                 }
@@ -310,6 +286,27 @@ AppletItem {
                                         font.bold: true
                                         Layout.fillWidth: true
                                         horizontalAlignment: Text.AlignHCenter
+                                    }
+
+                                    Item {
+                                        implicitWidth: 28
+                                        implicitHeight: 28
+
+                                        DciIcon {
+                                            anchors.centerIn: parent
+                                            name: "utilities-terminal-symbolic"
+                                            sourceSize: Qt.size(16, 16)
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (Applet.quota)
+                                                    Applet.quota.openConsole(modelData.providerId)
+                                            }
+                                        }
                                     }
                                 }
 
@@ -351,27 +348,6 @@ AppletItem {
                                     }
                                 }
 
-                                RowLayout {
-                                    Layout.fillWidth: true
-
-                                    Button {
-                                        text: qsTr("打开控制台")
-                                        Layout.fillWidth: true
-                                        onClicked: {
-                                            if (Applet.quota)
-                                                Applet.quota.openConsole(modelData.providerId)
-                                        }
-                                    }
-
-                                    Button {
-                                        text: qsTr("手动录入")
-                                        Layout.fillWidth: true
-                                        onClicked: {
-                                            root.selectedProvider = modelData
-                                            manualInputPopup.open()
-                                        }
-                                    }
-                                }
                             }
                     }
                 }
@@ -407,64 +383,11 @@ AppletItem {
                     visible: Applet.quota && !Applet.quota.extensionConnected
                     text: qsTr("请安装浏览器扩展并输入配对 Token 以连接。")
                     wrapMode: Text.WordWrap
-                    color: "#8b949e"
+                    color: root.secondaryTextColor.color
                     font.pixelSize: 12
                 }
             }
         }
     }
 
-    Popup {
-        id: manualInputPopup
-        anchors.centerIn: parent
-        width: 300
-        padding: 16
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 12
-
-            Label {
-                text: qsTr("手动录入额度")
-                font.pixelSize: 16
-                font.bold: true
-            }
-
-            Label {
-                Layout.fillWidth: true
-                text: qsTr("输入剩余百分比 (0-100)：")
-                font.pixelSize: 13
-            }
-
-            SpinBox {
-                id: manualSpinBox
-                Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: 50
-                editable: true
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-
-                Button {
-                    text: qsTr("确定")
-                    Layout.fillWidth: true
-                    onClicked: {
-                        if (Applet.quota && root.selectedProvider.providerId) {
-                            Applet.quota.setManualRatio(root.selectedProvider.providerId, manualSpinBox.value / 100)
-                        }
-                        manualInputPopup.close()
-                    }
-                }
-
-                Button {
-                    text: qsTr("取消")
-                    Layout.fillWidth: true
-                    onClicked: manualInputPopup.close()
-                }
-            }
-        }
-    }
 }

@@ -216,26 +216,6 @@ CodingPlanModel::clearSession (const QString &providerId)
 }
 
 void
-CodingPlanModel::setManualRatio (const QString &providerId, double ratio)
-{
-  const int index = snapshotIndex (providerId);
-  if (index < 0)
-    {
-      return;
-    }
-
-  QuotaSnapshot snapshot = m_snapshots.at (index);
-  snapshot.remainingRatio = std::max (0.0, std::min (1.0, ratio));
-  snapshot.status = SnapshotStatus::Ok;
-  snapshot.balanceText = QStringLiteral ("%1%").arg (qRound (snapshot.remainingRatio * 100));
-  snapshot.message = QStringLiteral ("手动录入");
-  snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
-  m_snapshots[index] = snapshot;
-  saveSnapshots ();
-  emit snapshotsChanged ();
-}
-
-void
 CodingPlanModel::setBrowserExtResult (const QString &providerId,
                                       const QVariantMap &result)
 {
@@ -345,7 +325,7 @@ CodingPlanModel::setProviderError (const QString &providerId,
   snapshot.fiveHourRemainingRatio = -1.0;
   snapshot.fiveHourBalanceText.clear ();
   snapshot.message = message.trimmed ().isEmpty ()
-                         ? QStringLiteral ("读取失败，请打开控制台人工确认或手动录入。")
+                         ? QStringLiteral ("读取失败，请打开控制台人工确认。")
                          : message.trimmed ();
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   m_snapshots[index] = snapshot;

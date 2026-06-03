@@ -38,7 +38,6 @@ public:
   Q_INVOKABLE void openConsole (const QString &providerId);
   Q_INVOKABLE void openLogin (const QString &providerId);
   Q_INVOKABLE void clearSession (const QString &providerId);
-  Q_INVOKABLE void setManualRatio (const QString &providerId, double ratio);
   Q_INVOKABLE void setBrowserExtResult (const QString &providerId,
                                          const QVariantMap &result);
   Q_INVOKABLE void setProviderError (const QString &providerId,
