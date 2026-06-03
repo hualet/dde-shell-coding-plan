@@ -186,7 +186,7 @@ function handleMessage(msg) {
   if (type === "auth_result") {
     handleAuthResult(msg);
   } else if (type === MSG_TYPE_REFRESH_REQUEST) {
-    handleRefreshRequest(msg);
+    handleRefreshRequest(msg).catch((err) => error("handleRefreshRequest failed", err));
   } else if (type === MSG_TYPE_OPEN_CONSOLE) {
     handleOpenConsole(msg);
   } else {

@@ -153,7 +153,12 @@ CodingPlanModel::refreshAll ()
 {
   if (m_browserExtProvider && m_browserExtProvider->isExtensionConnected ())
     {
-      m_browserExtProvider->refreshProviders (m_registry.providerIds ());
+      const QStringList ids = m_hasProviderFilter
+          ? m_enabledProviders : m_registry.providerIds ();
+      if (!ids.isEmpty ())
+        {
+          m_browserExtProvider->refreshProviders (ids);
+        }
     }
   else
     {
@@ -166,6 +171,11 @@ CodingPlanModel::refreshProvider (const QString &providerId)
 {
   const int index = snapshotIndex (providerId);
   if (index < 0 || !m_registry.contains (providerId))
+    {
+      return;
+    }
+
+  if (!isProviderEnabled (providerId))
     {
       return;
     }
