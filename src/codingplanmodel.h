@@ -16,7 +16,7 @@ class BrowserExtProvider;
 class CodingPlanModel : public QObject
 {
   Q_OBJECT
-  Q_PROPERTY (QVariantList providers READ providers CONSTANT)
+  Q_PROPERTY (QVariantList providers READ providers NOTIFY providersChanged)
   Q_PROPERTY (QVariantList snapshots READ snapshots NOTIFY snapshotsChanged)
   Q_PROPERTY (bool hasSubscriptions READ hasSubscriptions NOTIFY snapshotsChanged)
   Q_PROPERTY (QString tooltipText READ tooltipText NOTIFY snapshotsChanged)
@@ -49,6 +49,7 @@ public:
   void setWebSocketServer (WebSocketServer *server);
 
 signals:
+  void providersChanged ();
   void snapshotsChanged ();
   void sessionCleared (const QString &providerId);
   void backgroundRefreshRequested ();
@@ -77,4 +78,5 @@ private:
   WebSocketServer *m_wsServer = nullptr;
   BrowserExtProvider *m_browserExtProvider = nullptr;
   QStringList m_enabledProviders;
+  bool m_hasProviderFilter = false;
 };

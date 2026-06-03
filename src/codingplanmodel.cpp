@@ -516,6 +516,9 @@ CodingPlanModel::onExtensionStatusChanged (bool connected)
   if (!connected)
     {
       m_enabledProviders.clear ();
+      m_hasProviderFilter = false;
+      emit providersChanged ();
+      emit snapshotsChanged ();
     }
   emit extensionStatusChanged ();
 }
@@ -524,13 +527,15 @@ void
 CodingPlanModel::onAvailableProvidersChanged (const QStringList &providers)
 {
   m_enabledProviders = providers;
+  m_hasProviderFilter = true;
+  emit providersChanged ();
   emit snapshotsChanged ();
 }
 
 bool
 CodingPlanModel::isProviderEnabled (const QString &providerId) const
 {
-  if (m_enabledProviders.isEmpty ())
+  if (!m_hasProviderFilter)
     {
       return true;
     }

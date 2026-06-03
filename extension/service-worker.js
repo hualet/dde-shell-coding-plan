@@ -200,7 +200,7 @@ function handleAuthResult(msg) {
     log("handleAuthResult: auth success");
     updateConnectionStatus("connected");
     startHeartbeat();
-    sendStatus();
+    sendStatus().catch((err) => error("sendStatus failed", err));
   } else {
     authenticated = false;
     warn("handleAuthResult: auth failed:", msg.message);
@@ -337,7 +337,14 @@ async function handleRefreshRequest(msg) {
     return;
   }
 
-  enqueueRefresh(providerIds, requestId, timeout || 15000);
+  const enabled = await getEnabledPlans();
+  const filtered = providerIds.filter((id) => enabled.includes(id));
+  if (filtered.length === 0) {
+    log("handleRefreshRequest: no enabled providers after intersection");
+    return;
+  }
+
+  enqueueRefresh(filtered, requestId, timeout || 15000);
 }
 
 const SPA_PROVIDERS = new Set(["codex", "kimi-code", "glm-coding"]);
@@ -784,7 +791,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes[PLANS_STORAGE_KEY]) {
     if (authenticated && ws && ws.readyState === WebSocket.OPEN) {
       log("plans changed, resending status");
-      sendStatus();
+      sendStatus().catch((err) => error("sendStatus failed", err));
     }
   }
 });

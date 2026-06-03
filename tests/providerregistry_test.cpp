@@ -55,6 +55,10 @@ private slots:
   void extensionSendStatusOnPlansChange ();
   void modelFiltersByExtensionEnabledPlans ();
   void modelHasSubscriptionsRespectsFilter ();
+  void modelHasProviderFilterFlag ();
+  void providersPropertyHasChangedSignal ();
+  void extensionHandleRefreshRequestFiltersDisabled ();
+  void extensionSendStatusCallsHaveCatchHandlers ();
 };
 
 void
@@ -827,6 +831,97 @@ ProviderRegistryTest::modelHasSubscriptionsRespectsFilter ()
   const QString fnBody = content.mid (fnStart, 300);
 
   QVERIFY (fnBody.contains (QStringLiteral ("isProviderEnabled")));
+}
+
+void
+ProviderRegistryTest::modelHasProviderFilterFlag ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+
+  QVERIFY (headerContent.contains (QStringLiteral ("m_hasProviderFilter")));
+
+  QFile source (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
+  const QString sourceContent = QString::fromUtf8 (source.readAll ());
+
+  const qsizetype fnStart = sourceContent.indexOf (QStringLiteral ("CodingPlanModel::isProviderEnabled"));
+  QVERIFY (fnStart >= 0);
+  const QString fnBody = sourceContent.mid (fnStart, 300);
+  QVERIFY (fnBody.contains (QStringLiteral ("m_hasProviderFilter")));
+
+  const qsizetype availStart = sourceContent.indexOf (QStringLiteral ("CodingPlanModel::onAvailableProvidersChanged"));
+  QVERIFY (availStart >= 0);
+  const QString availBody = sourceContent.mid (availStart, 300);
+  QVERIFY (availBody.contains (QStringLiteral ("m_hasProviderFilter = true")));
+
+  const qsizetype extStart = sourceContent.indexOf (QStringLiteral ("CodingPlanModel::onExtensionStatusChanged"));
+  QVERIFY (extStart >= 0);
+  const QString extBody = sourceContent.mid (extStart, 400);
+  QVERIFY (extBody.contains (QStringLiteral ("m_hasProviderFilter = false")));
+}
+
+void
+ProviderRegistryTest::providersPropertyHasChangedSignal ()
+{
+  QFile header (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.h"));
+  QVERIFY2 (header.open (QIODevice::ReadOnly), qPrintable (header.errorString ()));
+  const QString headerContent = QString::fromUtf8 (header.readAll ());
+
+  QVERIFY (!headerContent.contains (QStringLiteral ("Q_PROPERTY (QVariantList providers READ providers CONSTANT)")));
+  QVERIFY (headerContent.contains (QStringLiteral ("Q_PROPERTY (QVariantList providers READ providers NOTIFY providersChanged)")));
+  QVERIFY (headerContent.contains (QStringLiteral ("void providersChanged ()")));
+
+  QFile source (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (source.open (QIODevice::ReadOnly), qPrintable (source.errorString ()));
+  const QString sourceContent = QString::fromUtf8 (source.readAll ());
+
+  const qsizetype availStart = sourceContent.indexOf (QStringLiteral ("CodingPlanModel::onAvailableProvidersChanged"));
+  QVERIFY (availStart >= 0);
+  const QString availBody = sourceContent.mid (availStart, 300);
+  QVERIFY (availBody.contains (QStringLiteral ("emit providersChanged")));
+
+  const qsizetype extStart = sourceContent.indexOf (QStringLiteral ("CodingPlanModel::onExtensionStatusChanged"));
+  QVERIFY (extStart >= 0);
+  const QString extBody = sourceContent.mid (extStart, 400);
+  QVERIFY (extBody.contains (QStringLiteral ("emit providersChanged")));
+}
+
+void
+ProviderRegistryTest::extensionHandleRefreshRequestFiltersDisabled ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("async function handleRefreshRequest"));
+  QVERIFY (fnStart >= 0);
+  const QString fnBody = content.mid (fnStart, 600);
+
+  QVERIFY (fnBody.contains (QStringLiteral ("getEnabledPlans")));
+  QVERIFY (fnBody.contains (QStringLiteral ("filter")));
+  QVERIFY (fnBody.contains (QStringLiteral ("enabled.includes")));
+}
+
+void
+ProviderRegistryTest::extensionSendStatusCallsHaveCatchHandlers ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype authStart = content.indexOf (QStringLiteral ("function handleAuthResult"));
+  QVERIFY (authStart >= 0);
+  const QString authBody = content.mid (authStart, 300);
+  QVERIFY (authBody.contains (QStringLiteral ("sendStatus().catch")));
+
+  const qsizetype storageStart = content.indexOf ("chrome.storage.onChanged.addListener");
+  QVERIFY (storageStart >= 0);
+  const QString storageBody = content.mid (storageStart, 800);
+  QVERIFY (storageBody.contains (QStringLiteral ("sendStatus().catch")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
