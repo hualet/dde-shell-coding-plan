@@ -94,6 +94,7 @@ async function getToken() {
   return result[TOKEN_STORAGE_KEY] || "";
 }
 
+// Connects to the native WebSocket server at ws://127.0.0.1:18765
 async function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     log("connect: already connected or connecting");
