@@ -567,7 +567,10 @@ function extractQuotaInPage(providerId) {
             Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
           );
           if (!weekly && !fiveHour) return null;
-          return { fiveHour, weekly };
+          return {
+            weekly: weekly != null ? weekly.ratio : null,
+            fiveHour: fiveHour != null ? fiveHour.ratio : null,
+          };
         } catch {
           return null;
         }
