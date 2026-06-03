@@ -352,14 +352,31 @@ function extractViaTab(provider, timeout) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let tabId = null;
+    let updatedListener = null;
+    let removedListener = null;
 
-    const timer = setTimeout(async () => {
+    function cleanup() {
+      clearTimeout(timer);
+      if (updatedListener) {
+        chrome.tabs.onUpdated.removeListener(updatedListener);
+        updatedListener = null;
+      }
+      if (removedListener) {
+        chrome.tabs.onRemoved.removeListener(removedListener);
+        removedListener = null;
+      }
+      if (tabId !== null) {
+        const id = tabId;
+        tabId = null;
+        chrome.tabs.remove(id).catch(() => {});
+      }
+    }
+
+    const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       error("extractViaTab: timeout for", provider.id);
-      if (tabId !== null) {
-        try { await chrome.tabs.remove(tabId); } catch {}
-      }
+      cleanup();
       reject(new Error("Timeout extracting quota for " + provider.id));
     }, timeout);
 
@@ -367,20 +384,30 @@ function extractViaTab(provider, timeout) {
       if (chrome.runtime.lastError) {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        cleanup();
         reject(new Error(chrome.runtime.lastError.message));
         return;
       }
 
       tabId = tab.id;
 
-      chrome.tabs.onUpdated.addListener(function listener(updatedTabId, changeInfo) {
+      removedListener = function (removedTabId) {
+        if (removedTabId !== tabId) return;
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error("Tab was closed before extraction completed"));
+      };
+      chrome.tabs.onRemoved.addListener(removedListener);
+
+      updatedListener = function (updatedTabId, changeInfo) {
         if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
-        chrome.tabs.onUpdated.removeListener(listener);
+        chrome.tabs.onUpdated.removeListener(updatedListener);
+        updatedListener = null;
 
         setTimeout(async () => {
           if (settled) {
-            try { await chrome.tabs.remove(tabId); } catch {}
+            cleanup();
             return;
           }
 
@@ -392,12 +419,11 @@ function extractViaTab(provider, timeout) {
             });
 
             if (settled) {
-              try { await chrome.tabs.remove(tabId); } catch {}
+              cleanup();
               return;
             }
             settled = true;
-            clearTimeout(timer);
-            try { await chrome.tabs.remove(tabId); } catch {}
+            cleanup();
 
             const result = results?.[0]?.result;
             if (result && result.success) {
@@ -410,17 +436,18 @@ function extractViaTab(provider, timeout) {
             }
           } catch (err) {
             if (settled) {
-              try { await chrome.tabs.remove(tabId); } catch {}
+              cleanup();
               return;
             }
             settled = true;
-            clearTimeout(timer);
-            try { await chrome.tabs.remove(tabId); } catch {}
+            cleanup();
             error("extractViaTab: executeScript error for", provider.id, err.message);
             reject(new Error(err.message));
           }
         }, 3000);
-      });
+      };
+
+      chrome.tabs.onUpdated.addListener(updatedListener);
     });
   });
 }

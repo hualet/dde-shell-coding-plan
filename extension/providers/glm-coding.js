@@ -8,15 +8,7 @@ export const glmCodingProvider = {
   loginIndicators: [".user-info", "[data-testid='user-menu']"],
 
   async extractViaApi(html, doc) {
-    try {
-      return await readQuotaApi();
-    } catch (err) {
-      const msg = err.message || "";
-      if (msg.startsWith("auth_error:")) {
-        throw err;
-      }
-      return null;
-    }
+    return await readQuotaApi();
   },
 
   extractQuota(doc) {

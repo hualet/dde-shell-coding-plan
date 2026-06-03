@@ -36,16 +36,9 @@ async function extractViaFetch(provider, quotaUrl) {
   checkLoginRedirect(provider, doc, quotaUrl);
 
   if (provider.extractViaApi) {
-    try {
-      const apiResult = await provider.extractViaApi(html, doc);
-      if (apiResult) {
-        return provider.normalizeSnapshot(apiResult);
-      }
-    } catch (err) {
-      const msg = err.message || "";
-      if (msg.startsWith("auth_error:")) {
-        throw err;
-      }
+    const apiResult = await provider.extractViaApi(html, doc);
+    if (apiResult) {
+      return provider.normalizeSnapshot(apiResult);
     }
   }
 

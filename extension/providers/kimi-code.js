@@ -8,15 +8,7 @@ export const kimiCodeProvider = {
   loginIndicators: [".user-avatar", "[data-testid='avatar']"],
 
   async extractViaApi(html, doc) {
-    try {
-      return await readBillingApi();
-    } catch (err) {
-      const msg = err.message || "";
-      if (msg.startsWith("auth_error:")) {
-        throw err;
-      }
-      return null;
-    }
+    return await readBillingApi();
   },
 
   extractQuota(doc) {
