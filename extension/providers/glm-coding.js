@@ -7,11 +7,15 @@ export const glmCodingProvider = {
   allowedOrigin: "https://bigmodel.cn",
   loginIndicators: [".user-info", "[data-testid='user-menu']"],
 
+  async extractViaApi(html, doc) {
+    return await readQuotaApi();
+  },
+
   extractQuota(doc) {
     let parsed = null;
 
     try {
-      parsed = readQuotaLimit(doc);
+      parsed = readQuotaFromDoc(doc);
     } catch {
       parsed = null;
     }
@@ -43,6 +47,10 @@ export const glmCodingProvider = {
     };
 
     if (raw.weekly) {
+      result.weeklyRemainingRatio = raw.weekly.ratio;
+      result.weeklyBalanceText = raw.weekly.text;
+      result.weeklyUsed = raw.weekly.used ?? -1;
+      result.weeklyTotal = raw.weekly.total ?? -1;
       result.remainingRatio = raw.weekly.ratio;
       result.balanceText = raw.weekly.text;
       if (raw.weekly.used >= 0) result.used = raw.weekly.used;
@@ -52,10 +60,6 @@ export const glmCodingProvider = {
     if (raw.fiveHour) {
       result.fiveHourRemainingRatio = raw.fiveHour.ratio;
       result.fiveHourBalanceText = raw.fiveHour.text;
-      if (!raw.weekly) {
-        result.remainingRatio = raw.fiveHour.ratio;
-        result.balanceText = raw.fiveHour.text;
-      }
     }
 
     if (!raw.weekly && !raw.fiveHour) {
@@ -104,7 +108,33 @@ function limitToQuota(limit) {
   };
 }
 
-function readQuotaLimit(doc) {
+async function readQuotaApi() {
+  const response = await fetch("https://bigmodel.cn/api/monitor/usage/quota/limit", {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!payload) return null;
+  const limits = payload?.data?.limits || [];
+  const fiveHour = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 3);
+  const weekly = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 6);
+
+  const weeklyQuota = limitToQuota(weekly);
+  const fiveHourQuota = limitToQuota(fiveHour);
+
+  if (!weeklyQuota && !fiveHourQuota) return null;
+
+  return {
+    weekly: weeklyQuota,
+    fiveHour: fiveHourQuota,
+  };
+}
+
+function readQuotaFromDoc(doc) {
   const token = cookieValue(doc, "bigmodel_token_production");
   if (!token) return null;
 
