@@ -571,7 +571,7 @@ ProviderRegistryTest::websocketServerDiscardClientNoDoubleDelete ()
   QVERIFY (discardBody.contains (QStringLiteral ("old->deleteLater")));
 
   const QString disconnBody = extractMethodBody (
-      QStringLiteral ("WebSocketServer::onClientDisconnected"));
+      QStringLiteral ("WebSocketServer::onClientDisconnected ()"));
   QVERIFY2 (!disconnBody.isEmpty (), "onClientDisconnected method not found");
   QVERIFY (disconnBody.contains (QStringLiteral ("qobject_cast")));
   QVERIFY (disconnBody.contains (QStringLiteral ("senderSocket")));
@@ -690,7 +690,8 @@ ProviderRegistryTest::modelMigratesWebviewSnapshots ()
   QVERIFY (content.contains (QStringLiteral ("webview")));
   QVERIFY (content.contains (QStringLiteral ("BrowserExt")));
 
-  const qsizetype loadStart = content.indexOf (QStringLiteral ("loadSnapshots"));
+  const qsizetype loadStart = content.indexOf (
+      QStringLiteral ("CodingPlanModel::loadSnapshots ()"));
   QVERIFY (loadStart >= 0);
 
   const QString loadBody = content.mid (loadStart, 2000);

@@ -95,6 +95,7 @@ async function getToken() {
 }
 
 // Connects to the native WebSocket server at ws://127.0.0.1:18765
+// Handles message types: auth, refresh_request, refresh_result, refresh_progress, heartbeat
 async function connect() {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     log("connect: already connected or connecting");
