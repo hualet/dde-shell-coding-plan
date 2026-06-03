@@ -391,16 +391,23 @@ ProviderRegistryTest::extensionManifestExists ()
 void
 ProviderRegistryTest::extensionServiceWorkerExists ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  QFile sw (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (sw.open (QIODevice::ReadOnly), qPrintable (sw.errorString ()));
 
-  const QString content = QString::fromUtf8 (file.readAll ());
-  QVERIFY (content.contains (QStringLiteral ("WebSocket")));
-  QVERIFY (content.contains (QStringLiteral ("127.0.0.1:18765")));
-  QVERIFY (content.contains (QStringLiteral ("auth")));
-  QVERIFY (content.contains (QStringLiteral ("refresh_request")));
-  QVERIFY (content.contains (QStringLiteral ("refresh_result")));
-  QVERIFY (content.contains (QStringLiteral ("offscreen")));
+  const QString swContent = QString::fromUtf8 (sw.readAll ());
+  QVERIFY (swContent.contains (QStringLiteral ("WebSocket")));
+  QVERIFY (swContent.contains (QStringLiteral ("WS_URL")));
+  QVERIFY (swContent.contains (QStringLiteral ("MSG_TYPE_REFRESH_REQUEST")));
+  QVERIFY (swContent.contains (QStringLiteral ("MSG_TYPE_REFRESH_RESULT")));
+  QVERIFY (swContent.contains (QStringLiteral ("offscreen")));
+
+  QFile proto (QStringLiteral (SOURCE_DIR "/extension/shared/ws-protocol.js"));
+  QVERIFY2 (proto.open (QIODevice::ReadOnly), qPrintable (proto.errorString ()));
+
+  const QString protoContent = QString::fromUtf8 (proto.readAll ());
+  QVERIFY (protoContent.contains (QStringLiteral ("127.0.0.1:18765")));
+  QVERIFY (protoContent.contains (QStringLiteral ("refresh_request")));
+  QVERIFY (protoContent.contains (QStringLiteral ("refresh_result")));
 }
 
 void
@@ -554,7 +561,8 @@ ProviderRegistryTest::websocketServerDiscardClientNoDoubleDelete ()
   const QString content = QString::fromUtf8 (file.readAll ());
 
   const auto extractMethodBody = [&content] (const QString &signature) -> QString {
-    const qsizetype start = content.indexOf (signature);
+    const QString nlSig = QLatin1Char ('\n') + signature;
+    const qsizetype start = content.indexOf (nlSig);
     if (start < 0) return {};
     const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), start);
     if (braceStart < 0) return {};
@@ -700,10 +708,25 @@ ProviderRegistryTest::modelMigratesWebviewSnapshots ()
   QVERIFY (content.contains (QStringLiteral ("webview")));
   QVERIFY (content.contains (QStringLiteral ("BrowserExt")));
 
-  const qsizetype loadStart = content.indexOf (QStringLiteral ("loadSnapshots"));
-  QVERIFY (loadStart >= 0);
+  const qsizetype loadDefStart = content.indexOf (
+      QStringLiteral ("CodingPlanModel::loadSnapshots"));
+  QVERIFY (loadDefStart >= 0);
 
-  const QString loadBody = content.mid (loadStart, 2000);
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), loadDefStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString loadBody = content.mid (loadDefStart, braceEnd - loadDefStart + 1);
   QVERIFY (loadBody.contains (QStringLiteral ("webview")));
   QVERIFY (loadBody.contains (QStringLiteral ("BrowserExt")));
 }
@@ -716,10 +739,29 @@ ProviderRegistryTest::refreshAllSendsAllProviderIds ()
 
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  QVERIFY (content.contains (QStringLiteral ("CodingPlanModel::refreshAll")));
-  QVERIFY (content.contains (QStringLiteral ("m_hasProviderFilter")));
-  QVERIFY (content.contains (QStringLiteral ("m_enabledProviders : m_registry.providerIds ()")));
-  QVERIFY (!content.contains (QStringLiteral ("SnapshotStatus::Ok")));
+  const qsizetype fnStart = content.indexOf (
+      QStringLiteral ("\nCodingPlanModel::refreshAll"));
+  QVERIFY (fnStart >= 0);
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+  QVERIFY (fnBody.contains (QStringLiteral ("m_hasProviderFilter")));
+  QVERIFY (fnBody.contains (QStringLiteral ("m_enabledProviders")));
+  QVERIFY (fnBody.contains (QStringLiteral ("m_registry.providerIds ()")));
+  QVERIFY (!fnBody.contains (QStringLiteral ("SnapshotStatus::Ok")));
 }
 
 void
