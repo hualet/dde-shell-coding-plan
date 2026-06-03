@@ -339,7 +339,176 @@ async function handleRefreshRequest(msg) {
   enqueueRefresh(providerIds, requestId, timeout || 15000);
 }
 
+const SPA_PROVIDERS = new Set(["codex"]);
+
 function extractProviderQuota(provider, timeout) {
+  if (SPA_PROVIDERS.has(provider.id)) {
+    return extractViaTab(provider, timeout);
+  }
+  return extractViaOffscreen(provider, timeout);
+}
+
+function extractViaTab(provider, timeout) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let tabId = null;
+
+    const timer = setTimeout(async () => {
+      if (settled) return;
+      settled = true;
+      error("extractViaTab: timeout for", provider.id);
+      if (tabId !== null) {
+        try { await chrome.tabs.remove(tabId); } catch {}
+      }
+      reject(new Error("Timeout extracting quota for " + provider.id));
+    }, timeout);
+
+    chrome.tabs.create({ url: provider.quotaUrl, active: false }, (tab) => {
+      if (chrome.runtime.lastError) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+
+      tabId = tab.id;
+
+      chrome.tabs.onUpdated.addListener(function listener(updatedTabId, changeInfo) {
+        if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+        chrome.tabs.onUpdated.removeListener(listener);
+
+        setTimeout(async () => {
+          if (settled) {
+            try { await chrome.tabs.remove(tabId); } catch {}
+            return;
+          }
+
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: extractQuotaInPage,
+              args: [provider.id],
+            });
+
+            if (settled) {
+              try { await chrome.tabs.remove(tabId); } catch {}
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            try { await chrome.tabs.remove(tabId); } catch {}
+
+            const result = results?.[0]?.result;
+            if (result && result.success) {
+              log("extractViaTab: success for", provider.id);
+              resolve(result.data);
+            } else {
+              const errMsg = result?.error || "Extraction failed in tab";
+              error("extractViaTab: failed for", provider.id, errMsg);
+              reject(new Error(errMsg));
+            }
+          } catch (err) {
+            if (settled) {
+              try { await chrome.tabs.remove(tabId); } catch {}
+              return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            try { await chrome.tabs.remove(tabId); } catch {}
+            error("extractViaTab: executeScript error for", provider.id, err.message);
+            reject(new Error(err.message));
+          }
+        }, 3000);
+      });
+    });
+  });
+}
+
+function extractQuotaInPage(providerId) {
+  const PROVIDERS = {
+    codex: {
+      extract(doc) {
+        const text = (doc.body ? doc.body.innerText : "") || "";
+        const normalized = text.replace(/\u00a0/g, " ").replace(/％/g, "%").replace(/[ \t]+/g, " ").trim();
+        if (normalized.indexOf("Codex") < 0 && !doc.location?.pathname?.includes("/codex/cloud/settings/analytics")) {
+          return null;
+        }
+        const lines = normalized.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
+        let fiveHour = null;
+        let weekly = null;
+        for (let i = 0; i < lines.length; ++i) {
+          if (/5\s*(?:小时|hour).*(?:使用|限额|限制|额度|usage|limit)/i.test(lines[i])) {
+            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
+              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
+              if (m) { fiveHour = Number(m[1]) / 100; break; }
+            }
+            if (fiveHour == null) {
+              const sec = lines.slice(i, i + 8).join("\n");
+              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+              if (pm) fiveHour = Number(pm[1]) / 100;
+            }
+          }
+          if (/(?:每周|周).*(?:使用|限额|限制|额度)/i.test(lines[i]) || /weekly.*(?:usage|limit)/i.test(lines[i])) {
+            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
+              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
+              if (m) { weekly = Number(m[1]) / 100; break; }
+            }
+            if (weekly == null) {
+              const sec = lines.slice(i, i + 8).join("\n");
+              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+              if (pm) weekly = Number(pm[1]) / 100;
+            }
+          }
+        }
+        if (fiveHour == null && weekly == null) {
+          const compact = normalized.replace(/\s+/g, "");
+          if (compact.indexOf("5小时") >= 0) {
+            const slice = compact.slice(compact.indexOf("5小时"), compact.indexOf("5小时") + 240);
+            const pm = slice.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+            if (pm) fiveHour = Number(pm[1]) / 100;
+          }
+        }
+        return { fiveHour, weekly };
+      }
+    }
+  };
+
+  const provider = PROVIDERS[providerId];
+  if (!provider) return { success: false, error: "Unknown provider in tab" };
+
+  const parsed = provider.extract(document);
+  if (!parsed || (parsed.fiveHour == null && parsed.weekly == null)) {
+    const text = (document.body ? document.body.innerText : "").toLowerCase();
+    const isLogin = text.includes("log in") || text.includes("sign in") || text.includes("登录") || text.includes("login");
+    if (isLogin) {
+      return { success: false, error: "auth_error:未登录 Codex，请先在浏览器中登录 chatgpt.com" };
+    }
+    return { success: false, error: "Could not find Codex quota info on rendered page" };
+  }
+
+  const clamp = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1);
+  const pct = (v) => (v >= 0 ? Math.round(v * 100) + "%" : "");
+
+  return {
+    success: true,
+    data: {
+      providerId: "codex",
+      providerName: "Codex / ChatGPT",
+      source: "browser_ext",
+      status: "ok",
+      weeklyRemainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : -1,
+      weeklyBalanceText: parsed.weekly != null ? pct(clamp(parsed.weekly)) : "",
+      fiveHourRemainingRatio: parsed.fiveHour != null ? clamp(parsed.fiveHour) : -1,
+      fiveHourBalanceText: parsed.fiveHour != null ? pct(clamp(parsed.fiveHour)) : "",
+      remainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : (parsed.fiveHour != null ? clamp(parsed.fiveHour) : -1),
+      balanceText: parsed.weekly != null ? pct(clamp(parsed.weekly)) : (parsed.fiveHour != null ? pct(clamp(parsed.fiveHour)) : ""),
+      updatedAt: new Date().toISOString(),
+    }
+  };
+}
+
+function extractViaOffscreen(provider, timeout) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let offscreenCreated = false;
@@ -347,7 +516,7 @@ function extractProviderQuota(provider, timeout) {
     const timer = setTimeout(async () => {
       if (settled) return;
       settled = true;
-      error("extractProviderQuota: timeout for", provider.id);
+      error("extractViaOffscreen: timeout for", provider.id);
       if (offscreenCreated) {
         try { await chrome.offscreen.closeDocument(); } catch {}
       }
@@ -365,7 +534,7 @@ function extractProviderQuota(provider, timeout) {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          error("extractProviderQuota: createDocument failed:", chrome.runtime.lastError.message);
+          error("extractViaOffscreen: createDocument failed:", chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
           return;
         }
@@ -393,17 +562,17 @@ function extractProviderQuota(provider, timeout) {
             }
 
             if (chrome.runtime.lastError) {
-              error("extractProviderQuota: sendMessage failed:", chrome.runtime.lastError.message);
+              error("extractViaOffscreen: sendMessage failed:", chrome.runtime.lastError.message);
               reject(new Error(chrome.runtime.lastError.message));
               return;
             }
 
             if (response && response.success) {
-              log("extractProviderQuota: success for", provider.id);
+              log("extractViaOffscreen: success for", provider.id);
               resolve(response.data);
             } else {
               const errMsg = (response && response.error) || "Extraction failed";
-              error("extractProviderQuota: failed for", provider.id, errMsg);
+              error("extractViaOffscreen: failed for", provider.id, errMsg);
               reject(new Error(errMsg));
             }
           }

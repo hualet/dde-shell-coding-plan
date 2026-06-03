@@ -6,7 +6,9 @@
   "permissions": [
     "offscreen",
     "storage",
-    "alarms"
+    "alarms",
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",

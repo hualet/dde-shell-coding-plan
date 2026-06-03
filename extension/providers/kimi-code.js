@@ -10,7 +10,11 @@ export const kimiCodeProvider = {
   async extractViaApi(html, doc) {
     try {
       return await readBillingApi();
-    } catch {
+    } catch (err) {
+      const msg = err.message || "";
+      if (msg.startsWith("auth_error:")) {
+        throw err;
+      }
       return null;
     }
   },

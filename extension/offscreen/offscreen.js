@@ -36,9 +36,16 @@ async function extractViaFetch(provider, quotaUrl) {
   checkLoginRedirect(provider, doc, quotaUrl);
 
   if (provider.extractViaApi) {
-    const apiResult = await provider.extractViaApi(html, doc);
-    if (apiResult) {
-      return provider.normalizeSnapshot(apiResult);
+    try {
+      const apiResult = await provider.extractViaApi(html, doc);
+      if (apiResult) {
+        return provider.normalizeSnapshot(apiResult);
+      }
+    } catch (err) {
+      const msg = err.message || "";
+      if (msg.startsWith("auth_error:")) {
+        throw err;
+      }
     }
   }
 
@@ -78,11 +85,24 @@ async function fetchWithTimeout(url) {
       signal: controller.signal,
     });
 
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("auth_error:服务器返回 " + response.status + "，登录已过期或未登录");
+    }
+
+    if (response.status >= 500) {
+      throw new Error("服务器错误 " + response.status + "，请稍后重试");
+    }
+
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} for ${url}`);
+      throw new Error("HTTP " + response.status + " for " + url);
     }
 
     return await response.text();
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error("请求超时，请检查网络连接");
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
