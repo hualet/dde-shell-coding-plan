@@ -339,7 +339,7 @@ async function handleRefreshRequest(msg) {
   enqueueRefresh(providerIds, requestId, timeout || 15000);
 }
 
-const SPA_PROVIDERS = new Set(["codex"]);
+const SPA_PROVIDERS = new Set(["codex", "kimi-code"]);
 
 function extractProviderQuota(provider, timeout) {
   if (SPA_PROVIDERS.has(provider.id)) {
@@ -418,17 +418,17 @@ function extractViaTab(provider, timeout) {
               args: [provider.id],
             });
 
-            const result = results?.[0]?.result;
-            if (result && result.success) {
+            let lastResult = results?.[0]?.result;
+            if (lastResult && lastResult.success) {
               if (settled) { cleanup(); return; }
               settled = true;
               cleanup();
               log("extractViaTab: success for", provider.id);
-              resolve(result.data);
+              resolve(lastResult.data);
               return;
             }
 
-            if (!result || result.needsRetry) {
+            if (!lastResult || lastResult.needsRetry) {
               for (let attempt = 1; attempt <= 4; attempt++) {
                 await new Promise(r => setTimeout(r, 1500));
                 if (settled) { cleanup(); return; }
@@ -439,23 +439,23 @@ function extractViaTab(provider, timeout) {
                   args: [provider.id],
                 });
 
-                const retryResult = retryResults?.[0]?.result;
-                if (retryResult && retryResult.success) {
+                lastResult = retryResults?.[0]?.result;
+                if (lastResult && lastResult.success) {
                   if (settled) { cleanup(); return; }
                   settled = true;
                   cleanup();
                   log("extractViaTab: success for", provider.id, "attempt", attempt + 1);
-                  resolve(retryResult.data);
+                  resolve(lastResult.data);
                   return;
                 }
-                if (!retryResult?.needsRetry) break;
+                if (!lastResult?.needsRetry) break;
               }
             }
 
             if (settled) { cleanup(); return; }
             settled = true;
             cleanup();
-            const errMsg = result?.error || "Extraction failed in tab";
+            const errMsg = lastResult?.error || "Extraction failed in tab";
             error("extractViaTab: failed for", provider.id, errMsg);
             reject(new Error(errMsg));
           } catch (err) {
@@ -474,8 +474,13 @@ function extractViaTab(provider, timeout) {
 }
 
 function extractQuotaInPage(providerId) {
+  const clamp = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1);
+  const pct = (v) => (v >= 0 ? Math.round(v * 100) + "%" : "");
+
   const PROVIDERS = {
     codex: {
+      providerId: "codex",
+      providerName: "Codex / ChatGPT",
       extract(doc) {
         const text = (doc.body ? doc.body.innerText : "") || "";
         const normalized = text.replace(/\u00a0/g, " ").replace(/％/g, "%").replace(/[ \t]+/g, " ").trim();
@@ -519,6 +524,54 @@ function extractQuotaInPage(providerId) {
         }
         return { fiveHour, weekly };
       }
+    },
+    "kimi-code": {
+      providerId: "kimi-code",
+      providerName: "Kimi Code",
+      extract(doc) {
+        const token = localStorage.getItem("access_token");
+        if (!token) return null;
+
+        try {
+          const request = new XMLHttpRequest();
+          request.open("POST", "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages", false);
+          request.setRequestHeader("content-type", "application/json");
+          request.setRequestHeader("authorization", "Bearer " + token);
+          request.setRequestHeader("x-msh-platform", "web");
+          request.setRequestHeader("x-msh-version", "1.0.0");
+          request.setRequestHeader("x-language", "zh-CN");
+          request.send(JSON.stringify({ scope: ["FEATURE_CODING"] }));
+
+          if (request.status < 200 || request.status >= 300) return null;
+
+          const payload = JSON.parse(request.responseText);
+          const usages = Array.isArray(payload.usages) ? payload.usages : [];
+          const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
+          if (!usage) return null;
+
+          const clampRatio = (v) => Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1;
+          const pctText = (v) => v >= 0 ? Math.round(v * 100) + "%" : "";
+          const toQuota = (d) => {
+            if (!d) return null;
+            const used = Number(d.used);
+            const limit = Number(d.limit);
+            if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+            let remaining = Number(d.remaining);
+            if (!Number.isFinite(remaining)) remaining = limit - used;
+            const ratio = clampRatio(remaining / limit);
+            return { ratio, text: pctText(ratio), used, total: limit, resetAt: d.resetTime || "" };
+          };
+
+          const weekly = toQuota(usage.detail);
+          const fiveHour = toQuota(
+            Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
+          );
+          if (!weekly && !fiveHour) return null;
+          return { fiveHour, weekly };
+        } catch {
+          return null;
+        }
+      }
     }
   };
 
@@ -530,19 +583,16 @@ function extractQuotaInPage(providerId) {
     const text = (document.body ? document.body.innerText : "").toLowerCase();
     const isLogin = text.includes("log in") || text.includes("sign in") || text.includes("登录") || text.includes("login");
     if (isLogin) {
-      return { success: false, error: "auth_error:未登录 Codex，请先在浏览器中登录 chatgpt.com" };
+      return { success: false, error: "auth_error:未登录 " + provider.providerName + "，请先在浏览器中登录" };
     }
-    return { success: false, needsRetry: true, error: "Could not find Codex quota info on rendered page" };
+    return { success: false, needsRetry: true, error: "Could not find " + provider.providerName + " quota info on rendered page" };
   }
-
-  const clamp = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1);
-  const pct = (v) => (v >= 0 ? Math.round(v * 100) + "%" : "");
 
   return {
     success: true,
     data: {
-      providerId: "codex",
-      providerName: "Codex / ChatGPT",
+      providerId: provider.providerId,
+      providerName: provider.providerName,
       source: "browser_ext",
       status: "ok",
       weeklyRemainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : -1,

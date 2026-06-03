@@ -99,38 +99,42 @@ function detailToQuota(detail) {
 }
 
 async function readBillingApi() {
-  const response = await fetch("https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-msh-platform": "web",
-      "x-msh-version": "1.0.0",
-      "x-language": "zh-CN",
-      "referer": "https://www.kimi.com/code/console",
-      "origin": "https://www.kimi.com",
-    },
-    credentials: "include",
-    body: JSON.stringify({ scope: ["FEATURE_CODING"] }),
-  });
+  try {
+    const response = await fetch("https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-msh-platform": "web",
+        "x-msh-version": "1.0.0",
+        "x-language": "zh-CN",
+      },
+      referrer: "https://www.kimi.com/code/console",
+      referrerPolicy: "strict-origin-when-cross-origin",
+      credentials: "include",
+      body: JSON.stringify({ scope: ["FEATURE_CODING"] }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (!payload) return null;
+    const usages = Array.isArray(payload.usages) ? payload.usages : [];
+    const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
+    if (!usage) return null;
+
+    const weekly = detailToQuota(usage.detail);
+    const fiveHour = detailToQuota(
+      Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
+    );
+
+    if (!weekly && !fiveHour) return null;
+
+    return { weekly, fiveHour };
+  } catch {
     return null;
   }
-
-  const payload = await response.json().catch(() => null);
-  if (!payload) return null;
-  const usages = Array.isArray(payload.usages) ? payload.usages : [];
-  const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
-  if (!usage) return null;
-
-  const weekly = detailToQuota(usage.detail);
-  const fiveHour = detailToQuota(
-    Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
-  );
-
-  if (!weekly && !fiveHour) return null;
-
-  return { weekly, fiveHour };
 }
 
 function readBillingFromDoc(doc) {
