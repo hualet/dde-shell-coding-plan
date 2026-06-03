@@ -115,7 +115,8 @@ function checkLoginRedirect(provider, doc, quotaUrl) {
 }
 
 function detectLoginState(provider, html) {
-  const lower = html.toLowerCase();
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const title = (titleMatch ? titleMatch[1] : "").toLowerCase();
   const loginIndicators = [
     "login",
     "sign in",
@@ -126,7 +127,7 @@ function detectLoginState(provider, html) {
   ];
 
   for (const indicator of loginIndicators) {
-    if (lower.includes(indicator)) return true;
+    if (title.includes(indicator)) return true;
   }
 
   return false;
