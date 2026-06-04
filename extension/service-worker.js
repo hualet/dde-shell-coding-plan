@@ -565,7 +565,9 @@ function extractQuotaInPage(providerId) {
             if (!d) return null;
             const used = Number(d.used);
             const limit = Number(d.limit);
-            if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+            if (!Number.isFinite(used)) return null;
+            if (used <= 0) return { ratio: 1, text: "100%", used: 0, total: Number.isFinite(limit) && limit > 0 ? limit : 0, resetAt: d.resetTime || "" };
+            if (!Number.isFinite(limit) || limit <= 0) return null;
             const remaining = limit - used;
             const ratio = clampRatio(remaining / limit);
             return { ratio, text: pctText(ratio), used, total: limit, resetAt: d.resetTime || "" };

@@ -88,7 +88,9 @@ function detailToQuota(detail) {
   if (!detail) return null;
   const used = Number(detail.used);
   const limit = Number(detail.limit);
-  if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
+  if (!Number.isFinite(used)) return null;
+  if (used <= 0) return { ratio: 1, text: "100%", used: 0, total: Number.isFinite(limit) && limit > 0 ? limit : 0, resetAt: detail.resetTime || "" };
+  if (!Number.isFinite(limit) || limit <= 0) return null;
   const remaining = limit - used;
   const ratio = clampRatio(remaining / limit);
   return {

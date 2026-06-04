@@ -60,10 +60,39 @@ function assertEqual(actual, expected, message) {
   assertEqual(q.ratio, 0, "fully used => ratio=0");
 }
 
-// 5. detailToQuota: nothing used
+// 5. detailToQuota: nothing used, normal limit
 {
   const q = detailToQuota({ used: 0, limit: 100, remaining: 100 });
   assertEqual(q.ratio, 1, "nothing used => ratio=1");
+  assertEqual(q.text, "100%", "nothing used => text=100%");
+  assertEqual(q.used, 0, "nothing used => used=0");
+  assertEqual(q.total, 100, "nothing used => total=100");
+}
+
+// 5b. KEY REGRESSION: used=0, limit=0 (API returns zero limit when nothing used)
+//     Should return ratio=1 (fully available), NOT null
+{
+  const q = detailToQuota({ used: 0, limit: 0 });
+  assert(q !== null, "used=0,limit=0 => must NOT return null");
+  assertEqual(q.ratio, 1, "used=0,limit=0 => ratio must be 1 (fully available)");
+  assertEqual(q.text, "100%", "used=0,limit=0 => text must be 100%");
+  assertEqual(q.used, 0, "used=0,limit=0 => used must be 0");
+}
+
+// 5c. KEY REGRESSION: used=0, no limit field at all (API omits limit when nothing used)
+//     Should return ratio=1 (fully available), NOT null
+{
+  const q = detailToQuota({ used: 0 });
+  assert(q !== null, "used=0,no limit => must NOT return null");
+  assertEqual(q.ratio, 1, "used=0,no limit => ratio must be 1 (fully available)");
+  assertEqual(q.text, "100%", "used=0,no limit => text must be 100%");
+}
+
+// 5d. used=0, limit=undefined
+{
+  const q = detailToQuota({ used: 0, limit: undefined });
+  assert(q !== null, "used=0,limit=undefined => must NOT return null");
+  assertEqual(q.ratio, 1, "used=0,limit=undefined => ratio=1");
 }
 
 // 6. detailToQuota: null detail returns null
@@ -72,10 +101,10 @@ function assertEqual(actual, expected, message) {
   assertEqual(q, null, "null detail returns null");
 }
 
-// 7. detailToQuota: zero limit returns null
+// 7. detailToQuota: zero limit with positive used returns null
 {
   const q = detailToQuota({ used: 10, limit: 0 });
-  assertEqual(q, null, "zero limit returns null");
+  assertEqual(q, null, "positive used, zero limit returns null");
 }
 
 // 8. detailToQuota: resetTime passed through
