@@ -5,6 +5,10 @@
 #include "codingplanmodel.h"
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSet>
 #include <QSettings>
 #include <QTest>
 
@@ -1151,17 +1155,35 @@ ProviderRegistryTest::extensionManifestHostPermissionsMatchProviders ()
 
   QFile file (QStringLiteral (SOURCE_DIR "/extension/manifest.json"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-  const QString content = QString::fromUtf8 (file.readAll ());
+  const QByteArray raw = file.readAll ();
+  const QJsonDocument doc = QJsonDocument::fromJson (raw);
+  QVERIFY2 (doc.isObject (), "manifest.json is not a JSON object");
 
+  const QJsonObject manifest = doc.object ();
+  const QJsonArray hostPerms = manifest.value (QStringLiteral ("host_permissions")).toArray ();
+
+  QSet<QString> manifestHosts;
+  for (const QJsonValue &perm : hostPerms)
+    {
+      const QString pattern = perm.toString ();
+      const qsizetype schemeEnd = pattern.indexOf (QStringLiteral ("://"));
+      if (schemeEnd < 0) continue;
+      const qsizetype pathStart = pattern.indexOf (QLatin1Char ('/'), schemeEnd + 3);
+      const QString host = (pathStart > 0 ? pattern.mid (schemeEnd + 3, pathStart - schemeEnd - 3) : pattern.mid (schemeEnd + 3));
+      if (!host.isEmpty ()) manifestHosts.insert (host);
+    }
+
+  QSet<QString> registryHosts;
   for (const QString &id : registry.providerIds ())
     {
       const ProviderDefinition provider = registry.provider (id);
       const QString host = QUrl (provider.loginUrl).host ();
       QVERIFY2 (!host.isEmpty (),
                 qPrintable (QStringLiteral ("Provider %1 has no host in loginUrl").arg (id)));
-      QVERIFY2 (content.contains (host),
-                qPrintable (QStringLiteral ("manifest.json missing host_permission for %1 (%2)").arg (id, host)));
+      registryHosts.insert (host);
     }
+
+  QCOMPARE (manifestHosts, registryHosts);
 }
 
 void

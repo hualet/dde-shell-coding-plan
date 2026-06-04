@@ -46,7 +46,7 @@ export const minimaxProvider = {
       }
     }
 
-    if (!fiveHour && !weekly) {
+    if (fiveHour == null && weekly == null) {
       return {
         success: false,
         reason: "Could not find MiniMax Coding quota info",
