@@ -3,6 +3,12 @@
   "name": "DDE Coding Plan Quota Helper",
   "version": "0.2.0",
   "description": "Reads AI coding plan quota pages and reports to DDE Shell plugin via WebSocket",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": [
     "offscreen",
     "storage",
@@ -19,6 +25,11 @@
     "type": "module"
   },
   "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "24": "icons/icon-24.png",
+      "32": "icons/icon-32.png"
+    },
     "default_popup": "popup/popup.html"
   },
   "options_page": "options/options.html"
