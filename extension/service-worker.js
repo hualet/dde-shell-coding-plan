@@ -563,14 +563,13 @@ function extractQuotaInPage(providerId) {
           const pctText = (v) => v >= 0 ? Math.round(v * 100) + "%" : "";
           const toQuota = (d) => {
             if (!d) return null;
-            const used = Number(d.used);
+            if (typeof d.used !== 'number' || !Number.isFinite(d.used) || d.used < 0) return null;
+            if (d.used === 0) return { ratio: 1, text: "100%", used: 0, total: typeof d.limit === 'number' && Number.isFinite(d.limit) && d.limit > 0 ? d.limit : 0, resetAt: d.resetTime || "" };
             const limit = Number(d.limit);
-            if (!Number.isFinite(used)) return null;
-            if (used <= 0) return { ratio: 1, text: "100%", used: 0, total: Number.isFinite(limit) && limit > 0 ? limit : 0, resetAt: d.resetTime || "" };
             if (!Number.isFinite(limit) || limit <= 0) return null;
-            const remaining = limit - used;
+            const remaining = limit - d.used;
             const ratio = clampRatio(remaining / limit);
-            return { ratio, text: pctText(ratio), used, total: limit, resetAt: d.resetTime || "" };
+            return { ratio, text: pctText(ratio), used: d.used, total: limit, resetAt: d.resetTime || "" };
           };
 
           const weekly = toQuota(usage.detail);

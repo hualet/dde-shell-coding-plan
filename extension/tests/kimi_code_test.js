@@ -206,6 +206,70 @@ const { normalizeSnapshot } = kimiCodeProvider;
   assertEqual(r.message, "请登录", "custom error message");
 }
 
+// --- Strict type validation: used must be a real number === 0 ---
+
+// 18. used=null must return null (Number(null)===0 is NOT accepted)
+{
+  const q = detailToQuota({ used: null, limit: 100 });
+  assertEqual(q, null, "used=null must return null");
+}
+
+// 19. used="" must return null (Number("")===0 is NOT accepted)
+{
+  const q = detailToQuota({ used: "", limit: 100 });
+  assertEqual(q, null, "used='' must return null");
+}
+
+// 20. used="abc" must return null
+{
+  const q = detailToQuota({ used: "abc", limit: 100 });
+  assertEqual(q, null, "used='abc' must return null");
+}
+
+// 21. used=undefined must return null
+{
+  const q = detailToQuota({ limit: 100 });
+  assertEqual(q, null, "used=undefined must return null");
+}
+
+// 22. used=-1 (negative) must return null
+{
+  const q = detailToQuota({ used: -1, limit: 100 });
+  assertEqual(q, null, "used=-1 must return null");
+}
+
+// 23. used=NaN must return null
+{
+  const q = detailToQuota({ used: NaN, limit: 100 });
+  assertEqual(q, null, "used=NaN must return null");
+}
+
+// 24. used=Infinity must return null
+{
+  const q = detailToQuota({ used: Infinity, limit: 100 });
+  assertEqual(q, null, "used=Infinity must return null");
+}
+
+// 25. used="0" (string zero) must return null — strict type check
+{
+  const q = detailToQuota({ used: "0", limit: 100 });
+  assertEqual(q, null, "used='0' string must return null");
+}
+
+// 26. Explicit 1%: used=1, limit=100, remaining=1 => ratio=0.99
+{
+  const q = detailToQuota({ used: 1, limit: 100, remaining: 1 });
+  assert(q !== null, "used=1,limit=100 must return non-null");
+  assertEqual(q.ratio, 0.99, "used=1,limit=100 => ratio=0.99");
+  assertEqual(q.text, "99%", "used=1,limit=100 => text=99%");
+}
+
+// 27. used is a numeric string "10" — must return null (strict typeof check)
+{
+  const q = detailToQuota({ used: "10", limit: 100 });
+  assertEqual(q, null, "used='10' string must return null");
+}
+
 console.log(`\nkimi-code tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) {
   process.exit(1);

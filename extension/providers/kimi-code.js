@@ -86,17 +86,16 @@ function percentText(ratio) {
 
 function detailToQuota(detail) {
   if (!detail) return null;
-  const used = Number(detail.used);
+  if (typeof detail.used !== 'number' || !Number.isFinite(detail.used) || detail.used < 0) return null;
+  if (detail.used === 0) return { ratio: 1, text: "100%", used: 0, total: typeof detail.limit === 'number' && Number.isFinite(detail.limit) && detail.limit > 0 ? detail.limit : 0, resetAt: detail.resetTime || "" };
   const limit = Number(detail.limit);
-  if (!Number.isFinite(used)) return null;
-  if (used <= 0) return { ratio: 1, text: "100%", used: 0, total: Number.isFinite(limit) && limit > 0 ? limit : 0, resetAt: detail.resetTime || "" };
   if (!Number.isFinite(limit) || limit <= 0) return null;
-  const remaining = limit - used;
+  const remaining = limit - detail.used;
   const ratio = clampRatio(remaining / limit);
   return {
     ratio,
     text: percentText(ratio),
-    used,
+    used: detail.used,
     total: limit,
     resetAt: detail.resetTime || "",
   };
