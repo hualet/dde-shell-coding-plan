@@ -1,3 +1,5 @@
+export { detailToQuota };
+
 export const kimiCodeProvider = {
   id: "kimi-code",
   name: "Kimi Code",
@@ -87,8 +89,7 @@ function detailToQuota(detail) {
   const used = Number(detail.used);
   const limit = Number(detail.limit);
   if (!Number.isFinite(used) || !Number.isFinite(limit) || limit <= 0) return null;
-  let remaining = Number(detail.remaining);
-  if (!Number.isFinite(remaining)) remaining = limit - used;
+  const remaining = limit - used;
   const ratio = clampRatio(remaining / limit);
   return {
     ratio,

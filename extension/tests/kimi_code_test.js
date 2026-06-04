@@ -1,0 +1,183 @@
+import { kimiCodeProvider, detailToQuota } from "../providers/kimi-code.js";
+
+let passed = 0;
+let failed = 0;
+
+function assert(condition, message) {
+  if (!condition) {
+    console.error("FAIL: " + message);
+    failed++;
+  } else {
+    passed++;
+  }
+}
+
+function assertEqual(actual, expected, message) {
+  const eps = 1e-9;
+  if (typeof expected === "number" && typeof actual === "number") {
+    if (Math.abs(actual - expected) > eps) {
+      console.error("FAIL: " + message + " — expected " + JSON.stringify(expected) + " got " + JSON.stringify(actual));
+      failed++;
+      return;
+    }
+  } else if (actual !== expected) {
+    console.error("FAIL: " + message + " — expected " + JSON.stringify(expected) + " got " + JSON.stringify(actual));
+    failed++;
+    return;
+  }
+  passed++;
+}
+
+// --- detailToQuota unit tests ---
+
+// 1. Core regression: used=20, limit=100, remaining=20 => ratio=0.8
+//    Even if API returns remaining=20 (wrong: equal to used), we compute limit - used = 80, ratio=0.8
+{
+  const q = detailToQuota({ used: 20, limit: 100, remaining: 20 });
+  assert(q !== null, "detailToQuota should return non-null for valid input");
+  assertEqual(q.ratio, 0.8, "used=20,limit=100,remaining=20 => ratio must be 0.8 (not 0.2)");
+  assertEqual(q.text, "80%", "used=20,limit=100 => text must be 80%");
+  assertEqual(q.used, 20, "used must be 20");
+  assertEqual(q.total, 100, "total must be 100");
+}
+
+// 2. detailToQuota ignores API remaining field even when it differs
+{
+  const q = detailToQuota({ used: 30, limit: 100, remaining: 999 });
+  assertEqual(q.ratio, 0.7, "used=30,limit=100,remaining=999 => ratio must be 0.7 (ignores remaining=999)");
+}
+
+// 3. detailToQuota: no remaining field at all
+{
+  const q = detailToQuota({ used: 50, limit: 200 });
+  assertEqual(q.ratio, 0.75, "used=50,limit=200,no remaining => ratio=0.75");
+  assertEqual(q.text, "75%", "used=50,limit=200 => text=75%");
+}
+
+// 4. detailToQuota: fully used
+{
+  const q = detailToQuota({ used: 100, limit: 100, remaining: 0 });
+  assertEqual(q.ratio, 0, "fully used => ratio=0");
+}
+
+// 5. detailToQuota: nothing used
+{
+  const q = detailToQuota({ used: 0, limit: 100, remaining: 100 });
+  assertEqual(q.ratio, 1, "nothing used => ratio=1");
+}
+
+// 6. detailToQuota: null detail returns null
+{
+  const q = detailToQuota(null);
+  assertEqual(q, null, "null detail returns null");
+}
+
+// 7. detailToQuota: zero limit returns null
+{
+  const q = detailToQuota({ used: 10, limit: 0 });
+  assertEqual(q, null, "zero limit returns null");
+}
+
+// 8. detailToQuota: resetTime passed through
+{
+  const q = detailToQuota({ used: 10, limit: 100, resetTime: "2026-06-05T00:00:00Z" });
+  assertEqual(q.resetAt, "2026-06-05T00:00:00Z", "resetTime passed through");
+}
+
+// --- normalizeSnapshot tests ---
+
+const { normalizeSnapshot } = kimiCodeProvider;
+
+// 9. Empty raw
+{
+  const r = normalizeSnapshot({});
+  assertEqual(r.status, "parse_error", "empty raw status");
+  assertEqual(r.providerId, "kimi-code", "empty raw providerId");
+  assertEqual(r.source, "browser_ext", "empty raw source");
+}
+
+// 10. Both null
+{
+  const r = normalizeSnapshot({ weekly: null, fiveHour: null });
+  assertEqual(r.status, "parse_error", "both null status");
+}
+
+// 11. Weekly + fiveHour with ratio/used/total
+{
+  const r = normalizeSnapshot({
+    weekly: { ratio: 0.6, text: "60%", used: 40, total: 100, resetAt: "" },
+    fiveHour: { ratio: 0.8, text: "80%", used: 20, total: 100, resetAt: "" },
+  });
+  assertEqual(r.status, "ok", "both present status");
+  assertEqual(r.weeklyRemainingRatio, 0.6, "weekly remainingRatio");
+  assertEqual(r.weeklyBalanceText, "60%", "weekly balanceText");
+  assertEqual(r.weeklyUsed, 40, "weekly used");
+  assertEqual(r.weeklyTotal, 100, "weekly total");
+  assertEqual(r.fiveHourRemainingRatio, 0.8, "fiveHour remainingRatio");
+  assertEqual(r.fiveHourBalanceText, "80%", "fiveHour balanceText");
+  assertEqual(r.remainingRatio, 0.6, "primary remainingRatio is weekly");
+  assertEqual(r.balanceText, "60%", "primary balanceText is weekly");
+  assertEqual(r.used, 40, "primary used from weekly");
+  assertEqual(r.total, 100, "primary total from weekly");
+}
+
+// 12. Only weekly, no fiveHour
+{
+  const r = normalizeSnapshot({
+    weekly: { ratio: 0.5, text: "50%", used: 50, total: 100, resetAt: "" },
+  });
+  assertEqual(r.status, "ok", "weekly-only status");
+  assertEqual(r.weeklyRemainingRatio, 0.5, "weekly-only weekly remaining");
+  assertEqual(r.remainingRatio, 0.5, "weekly-only primary remaining");
+  assertEqual(r.source, "browser_ext", "weekly-only source");
+}
+
+// 13. Only fiveHour, no weekly
+{
+  const r = normalizeSnapshot({
+    fiveHour: { ratio: 0.3, text: "30%", used: 70, total: 100, resetAt: "" },
+  });
+  assertEqual(r.status, "ok", "fiveHour-only status");
+  assertEqual(r.fiveHourRemainingRatio, 0.3, "fiveHour-only fiveHour remaining");
+}
+
+// 14. Source is always browser_ext, never webview
+{
+  const r = normalizeSnapshot({
+    weekly: { ratio: 0.9, text: "90%", used: 10, total: 100, resetAt: "" },
+  });
+  assertEqual(r.source, "browser_ext", "source must be browser_ext");
+  assert(r.source !== "webview", "source must not be webview");
+}
+
+// 15. Provider ID is kimi-code
+{
+  const r = normalizeSnapshot({
+    weekly: { ratio: 0.1, text: "10%", used: 90, total: 100, resetAt: "" },
+  });
+  assertEqual(r.providerId, "kimi-code", "providerId is kimi-code");
+}
+
+// 16. Zero remaining (fully used)
+{
+  const r = normalizeSnapshot({
+    weekly: { ratio: 0, text: "0%", used: 100, total: 100, resetAt: "" },
+    fiveHour: { ratio: 0, text: "0%", used: 50, total: 50, resetAt: "" },
+  });
+  assertEqual(r.weeklyRemainingRatio, 0, "zero weekly remaining");
+  assertEqual(r.fiveHourRemainingRatio, 0, "zero fiveHour remaining");
+  assertEqual(r.weeklyUsed, 100, "zero weekly used");
+  assertEqual(r.weeklyTotal, 100, "zero weekly total");
+}
+
+// 17. Custom error status/message
+{
+  const r = normalizeSnapshot({ status: "auth_error", message: "请登录" });
+  assertEqual(r.status, "auth_error", "custom error status");
+  assertEqual(r.message, "请登录", "custom error message");
+}
+
+console.log(`\nkimi-code tests: ${passed} passed, ${failed} failed`);
+if (failed > 0) {
+  process.exit(1);
+}

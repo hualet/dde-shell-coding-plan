@@ -78,6 +78,11 @@ private slots:
   void extractionModeTabMatchesTabExtractionInServiceWorker ();
   void storageDefaultProvidersMatchCppRegistry ();
   void modelMigratesWebviewSourceForAllProviders ();
+  void kimiDetailToQuotaIgnoresApiRemaining ();
+  void kimiServiceWorkerToQuotaIgnoresApiRemaining ();
+  void kimiSourceFieldIsBrowserExt ();
+  void kimiProviderIdIsConsistent ();
+  void kimiWeeklyQuotaUnchangedByRemainingFix ();
 };
 
 void
@@ -1267,6 +1272,132 @@ ProviderRegistryTest::modelMigratesWebviewSourceForAllProviders ()
   QVERIFY (!content.contains (QStringLiteral ("QWebEngineView")));
   QVERIFY (!content.contains (QStringLiteral ("QWebChannel")));
   QVERIFY (!content.contains (QStringLiteral ("QtWebEngine")));
+}
+
+void
+ProviderRegistryTest::kimiDetailToQuotaIgnoresApiRemaining ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("function detailToQuota(detail)"));
+  QVERIFY2 (fnStart >= 0, "detailToQuota function not found");
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+
+  QVERIFY (!fnBody.contains (QStringLiteral ("detail.remaining")));
+  QVERIFY (!fnBody.contains (QStringLiteral ("d.remaining")));
+  QVERIFY (fnBody.contains (QStringLiteral ("limit - used")));
+
+  const qsizetype clampFnStart = content.indexOf (QStringLiteral ("function clampRatio"));
+  QVERIFY (clampFnStart >= 0);
+  const qsizetype clampBraceStart = content.indexOf (QLatin1Char ('{'), clampFnStart);
+  int clampDepth = 0;
+  qsizetype clampBraceEnd = clampBraceStart;
+  for (; clampBraceEnd < content.size (); ++clampBraceEnd)
+    {
+      if (content[clampBraceEnd] == QLatin1Char ('{')) ++clampDepth;
+      else if (content[clampBraceEnd] == QLatin1Char ('}'))
+        {
+          --clampDepth;
+          if (clampDepth == 0) break;
+        }
+    }
+  const QString clampBody = content.mid (clampFnStart, clampBraceEnd - clampFnStart + 1);
+  QVERIFY (clampBody.contains (QStringLiteral ("Math.max")));
+  QVERIFY (clampBody.contains (QStringLiteral ("Math.min")));
+}
+
+void
+ProviderRegistryTest::kimiServiceWorkerToQuotaIgnoresApiRemaining ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype kimiStart = content.indexOf (QStringLiteral ("\"kimi-code\""));
+  QVERIFY2 (kimiStart >= 0, "kimi-code provider block not found in service worker");
+
+  const qsizetype providerEnd = content.indexOf (QStringLiteral ("\"glm-coding\""), kimiStart);
+  QVERIFY2 (providerEnd > kimiStart, "could not find end of kimi-code provider block");
+
+  const QString kimiBlock = content.mid (kimiStart, providerEnd - kimiStart);
+
+  QVERIFY (kimiBlock.contains (QStringLiteral ("const toQuota")));
+  QVERIFY (!kimiBlock.contains (QStringLiteral ("d.remaining")));
+  QVERIFY (kimiBlock.contains (QStringLiteral ("limit - used")));
+}
+
+void
+ProviderRegistryTest::kimiSourceFieldIsBrowserExt ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
+  QVERIFY (fnStart >= 0);
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+
+  QVERIFY (fnBody.contains (QStringLiteral ("source: \"browser_ext\"")));
+  QVERIFY (!fnBody.contains (QStringLiteral ("source: \"webview\"")));
+  QVERIFY (fnBody.contains (QStringLiteral ("providerId: \"kimi-code\"")));
+}
+
+void
+ProviderRegistryTest::kimiProviderIdIsConsistent ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("id: \"kimi-code\"")));
+  QVERIFY (!content.contains (QStringLiteral ("source: \"webview\"")));
+  QVERIFY (!content.contains (QStringLiteral ("QWebEngineView")));
+}
+
+void
+ProviderRegistryTest::kimiWeeklyQuotaUnchangedByRemainingFix ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (content.contains (QStringLiteral ("1 - usedRatio")));
+  QVERIFY (content.contains (QStringLiteral ("readTextQuota")));
+
+  QVERIFY (content.contains (QStringLiteral ("本周用量")));
+  QVERIFY (content.contains (QStringLiteral ("频限明细")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)
