@@ -94,6 +94,14 @@ ProviderRegistry::createDefault ()
         QStringLiteral ("https://bigmodel.cn/"),
         QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage") });
 
+  registry.addProvider (
+      { QStringLiteral ("minimax"),
+        QStringLiteral ("MiniMax Coding"),
+        SourceType::BrowserExt,
+        QStringLiteral ("https://platform.minimaxi.com/"),
+        QStringLiteral (
+            "https://platform.minimaxi.com/user-center/billing") });
+
   return registry;
 }
 

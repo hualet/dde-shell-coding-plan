@@ -6,6 +6,7 @@ export const glmCodingProvider = {
   consoleUrl: "https://bigmodel.cn/coding-plan/personal/usage",
   allowedOrigin: "https://bigmodel.cn",
   loginIndicators: [".user-info", "[data-testid='user-menu']"],
+  extractionMode: "tab",
 
   async extractViaApi(html, doc) {
     return await readQuotaApi();

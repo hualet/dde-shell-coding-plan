@@ -27,6 +27,14 @@ export const DEFAULT_PROVIDERS = [
     loginUrl: "https://bigmodel.cn/",
     allowedOrigin: "https://bigmodel.cn",
   },
+  {
+    id: "minimax",
+    name: "MiniMax Coding",
+    quotaUrl: "https://platform.minimaxi.com/user-center/billing",
+    consoleUrl: "https://platform.minimaxi.com/user-center/billing",
+    loginUrl: "https://platform.minimaxi.com/",
+    allowedOrigin: "https://platform.minimaxi.com",
+  },
 ];
 
 export async function getEnabledPlans() {

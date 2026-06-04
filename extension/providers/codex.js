@@ -6,6 +6,7 @@ export const codexProvider = {
   consoleUrl: "https://chatgpt.com/codex/cloud/settings/analytics#usage",
   allowedOrigin: "https://chatgpt.com",
   loginIndicators: [".user-avatar", "[data-testid='profile-button']"],
+  extractionMode: "tab",
 
   extractQuota(doc) {
     const text = (doc.body ? doc.body.innerText : "") || "";

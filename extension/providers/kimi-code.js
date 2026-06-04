@@ -6,6 +6,7 @@ export const kimiCodeProvider = {
   consoleUrl: "https://www.kimi.com/code/console",
   allowedOrigin: "https://www.kimi.com",
   loginIndicators: [".user-avatar", "[data-testid='avatar']"],
+  extractionMode: "tab",
 
   async extractViaApi(html, doc) {
     return await readBillingApi();
