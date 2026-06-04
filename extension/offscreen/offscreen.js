@@ -1,12 +1,6 @@
-import { codexProvider } from "../providers/codex.js";
-import { kimiCodeProvider } from "../providers/kimi-code.js";
-import { glmCodingProvider } from "../providers/glm-coding.js";
+import { buildProviderMap } from "../providers/index.js";
 
-const PROVIDERS = {
-  codex: codexProvider,
-  "kimi-code": kimiCodeProvider,
-  "glm-coding": glmCodingProvider,
-};
+const PROVIDERS = buildProviderMap();
 
 const FETCH_TIMEOUT = 15000;
 

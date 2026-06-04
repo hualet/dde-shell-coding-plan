@@ -1,6 +1,4 @@
-import { codexProvider } from "./providers/codex.js";
-import { kimiCodeProvider } from "./providers/kimi-code.js";
-import { glmCodingProvider } from "./providers/glm-coding.js";
+import { buildProviderMap, getTabProviderIds } from "./providers/index.js";
 
 import {
   MSG_TYPE_AUTH,
@@ -26,11 +24,8 @@ import {
   PLANS_STORAGE_KEY,
 } from "./shared/storage.js";
 
-const PROVIDERS = {
-  codex: codexProvider,
-  "kimi-code": kimiCodeProvider,
-  "glm-coding": glmCodingProvider,
-};
+const PROVIDERS = buildProviderMap();
+const TAB_PROVIDER_IDS = getTabProviderIds();
 
 let ws = null;
 let authenticated = false;
@@ -349,10 +344,8 @@ async function handleRefreshRequest(msg) {
   enqueueRefresh(filtered, requestId, timeout || 15000);
 }
 
-const SPA_PROVIDERS = new Set(["codex", "kimi-code", "glm-coding"]);
-
 function extractProviderQuota(provider, timeout) {
-  if (SPA_PROVIDERS.has(provider.id)) {
+  if (TAB_PROVIDER_IDS.has(provider.id)) {
     return extractViaTab(provider, timeout);
   }
   return extractViaOffscreen(provider, timeout);
@@ -629,6 +622,46 @@ function extractQuotaInPage(providerId) {
         } catch {
           return null;
         }
+      }
+    },
+    "minimax": {
+      providerId: "minimax",
+      providerName: "MiniMax Coding",
+      extract(doc) {
+        const text = (doc.body ? doc.body.innerText : "") || "";
+        const normalized = text.replace(/\u00a0/g, " ").replace(/％/g, "%").replace(/[ \t]+/g, " ").trim();
+        if (normalized.indexOf("MiniMax") < 0 && !doc.location?.hostname?.includes("minimaxi.com")) {
+          return null;
+        }
+        const lines = normalized.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
+        let fiveHour = null;
+        let weekly = null;
+        for (let i = 0; i < lines.length; ++i) {
+          if (/5\s*(?:小时|hour).*(?:使用|限额|限制|额度|usage|limit)/i.test(lines[i])) {
+            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
+              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
+              if (m) { fiveHour = Number(m[1]) / 100; break; }
+            }
+            if (fiveHour == null) {
+              const sec = lines.slice(i, i + 8).join("\n");
+              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+              if (pm) fiveHour = Number(pm[1]) / 100;
+            }
+          }
+          if (/(?:每周|周).*(?:使用|限额|限制|额度)/i.test(lines[i]) || /weekly.*(?:usage|limit)/i.test(lines[i])) {
+            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
+              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
+              if (m) { weekly = Number(m[1]) / 100; break; }
+            }
+            if (weekly == null) {
+              const sec = lines.slice(i, i + 8).join("\n");
+              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
+              if (pm) weekly = Number(pm[1]) / 100;
+            }
+          }
+        }
+        if (fiveHour == null && weekly == null) return null;
+        return { fiveHour, weekly };
       }
     }
   };

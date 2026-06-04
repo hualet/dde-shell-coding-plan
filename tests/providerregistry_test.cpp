@@ -63,6 +63,17 @@ private slots:
   void providersPropertyHasChangedSignal ();
   void extensionHandleRefreshRequestFiltersDisabled ();
   void extensionSendStatusCallsHaveCatchHandlers ();
+  void minimaxProviderUrlsMatchBillingPage ();
+  void extensionProvidersIndexExists ();
+  void extensionProvidersHaveExtractionMode ();
+  void extensionServiceWorkerUsesProviderIndex ();
+  void providerIdSetConsistencyCppExtension ();
+  void minimaxNormalizeSnapshotHandlesNullRaw ();
+  void minimaxNormalizeSnapshotHandlesMissingFields ();
+  void extensionManifestHostPermissionsMatchProviders ();
+  void extractionModeTabMatchesTabExtractionInServiceWorker ();
+  void storageDefaultProvidersMatchCppRegistry ();
+  void modelMigratesWebviewSourceForAllProviders ();
 };
 
 void
@@ -71,10 +82,11 @@ ProviderRegistryTest::builtInBrowserExtProvidersCoverMvpPlatforms ()
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
 
   const QStringList providerIds = registry.providerIds ();
-  QCOMPARE (providerIds.size (), 3);
+  QCOMPARE (providerIds.size (), 4);
   QVERIFY (providerIds.contains (QStringLiteral ("codex")));
   QVERIFY (providerIds.contains (QStringLiteral ("kimi-code")));
   QVERIFY (providerIds.contains (QStringLiteral ("glm-coding")));
+  QVERIFY (providerIds.contains (QStringLiteral ("minimax")));
 
   for (const QString &providerId : providerIds)
     {
@@ -471,8 +483,9 @@ void
 ProviderRegistryTest::extensionProvidersExist ()
 {
   for (const QString &name : { QStringLiteral ("codex"),
-                               QStringLiteral ("kimi-code"),
-                               QStringLiteral ("glm-coding") })
+                                QStringLiteral ("kimi-code"),
+                                QStringLiteral ("glm-coding"),
+                                QStringLiteral ("minimax") })
     {
       QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/") + name + QStringLiteral (".js"));
       QVERIFY2 (file.exists (), qPrintable (QStringLiteral ("Missing provider: %1.js").arg (name)));
@@ -733,6 +746,7 @@ ProviderRegistryTest::protocolProviderIdConsistency ()
   QVERIFY (swContent.contains (QStringLiteral ("codex")));
   QVERIFY (swContent.contains (QStringLiteral ("\"kimi-code\"")));
   QVERIFY (swContent.contains (QStringLiteral ("\"glm-coding\"")));
+  QVERIFY (swContent.contains (QStringLiteral ("\"minimax\"")));
 
   QFile provider (QStringLiteral (SOURCE_DIR "/extension/providers/codex.js"));
   QVERIFY2 (provider.open (QIODevice::ReadOnly), qPrintable (provider.errorString ()));
@@ -743,6 +757,11 @@ ProviderRegistryTest::protocolProviderIdConsistency ()
   QVERIFY2 (kimiProvider.open (QIODevice::ReadOnly), qPrintable (kimiProvider.errorString ()));
   const QString kimiContent = QString::fromUtf8 (kimiProvider.readAll ());
   QVERIFY (kimiContent.contains (QStringLiteral ("id: \"kimi-code\"")));
+
+  QFile minimaxProvider (QStringLiteral (SOURCE_DIR "/extension/providers/minimax.js"));
+  QVERIFY2 (minimaxProvider.open (QIODevice::ReadOnly), qPrintable (minimaxProvider.errorString ()));
+  const QString minimaxContent = QString::fromUtf8 (minimaxProvider.readAll ());
+  QVERIFY (minimaxContent.contains (QStringLiteral ("id: \"minimax\"")));
 
   QFile wsProto (QStringLiteral (SOURCE_DIR "/extension/shared/ws-protocol.js"));
   QVERIFY2 (wsProto.open (QIODevice::ReadOnly), qPrintable (wsProto.errorString ()));
@@ -969,6 +988,263 @@ ProviderRegistryTest::extensionSendStatusCallsHaveCatchHandlers ()
   const QString content = QString::fromUtf8 (file.readAll ());
 
   QVERIFY (content.contains (QStringLiteral ("sendStatus().catch")));
+}
+
+void
+ProviderRegistryTest::minimaxProviderUrlsMatchBillingPage ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  QVERIFY (registry.contains (QStringLiteral ("minimax")));
+
+  const ProviderDefinition provider
+      = registry.provider (QStringLiteral ("minimax"));
+
+  QCOMPARE (provider.loginUrl,
+            QStringLiteral ("https://platform.minimaxi.com/"));
+  QCOMPARE (provider.consoleUrl,
+            QStringLiteral (
+                "https://platform.minimaxi.com/user-center/billing"));
+  QCOMPARE (provider.sourceType, SourceType::BrowserExt);
+}
+
+void
+ProviderRegistryTest::extensionProvidersIndexExists ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/index.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("buildProviderMap")));
+  QVERIFY (content.contains (QStringLiteral ("getTabProviderIds")));
+  QVERIFY (content.contains (QStringLiteral ("ALL_PROVIDERS")));
+  QVERIFY (content.contains (QStringLiteral ("codex")));
+  QVERIFY (content.contains (QStringLiteral ("kimi-code")));
+  QVERIFY (content.contains (QStringLiteral ("glm-coding")));
+  QVERIFY (content.contains (QStringLiteral ("minimax")));
+}
+
+void
+ProviderRegistryTest::extensionProvidersHaveExtractionMode ()
+{
+  for (const QString &name : { QStringLiteral ("codex"),
+                                QStringLiteral ("kimi-code"),
+                                QStringLiteral ("glm-coding"),
+                                QStringLiteral ("minimax") })
+    {
+      QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/") + name + QStringLiteral (".js"));
+      QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+      const QString content = QString::fromUtf8 (file.readAll ());
+      QVERIFY2 (content.contains (QStringLiteral ("extractionMode")),
+                qPrintable (QStringLiteral ("Provider %1 missing extractionMode").arg (name)));
+    }
+}
+
+void
+ProviderRegistryTest::extensionServiceWorkerUsesProviderIndex ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (content.contains (QStringLiteral ("buildProviderMap")));
+  QVERIFY (content.contains (QStringLiteral ("getTabProviderIds")));
+  QVERIFY (content.contains (QStringLiteral ("providers/index.js")));
+  QVERIFY (!content.contains (QStringLiteral ("import { codexProvider }")));
+  QVERIFY (!content.contains (QStringLiteral ("import { kimiCodeProvider }")));
+  QVERIFY (!content.contains (QStringLiteral ("import { glmCodingProvider }")));
+}
+
+void
+ProviderRegistryTest::providerIdSetConsistencyCppExtension ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const QStringList cppIds = registry.providerIds ();
+
+  QFile indexFile (QStringLiteral (SOURCE_DIR "/extension/providers/index.js"));
+  QVERIFY2 (indexFile.open (QIODevice::ReadOnly), qPrintable (indexFile.errorString ()));
+  const QString indexContent = QString::fromUtf8 (indexFile.readAll ());
+
+  for (const QString &id : cppIds)
+    {
+      QVERIFY2 (indexContent.contains (id),
+                qPrintable (QStringLiteral ("Provider %1 in C++ registry missing from extension/providers/index.js").arg (id)));
+    }
+
+  QFile storageFile (QStringLiteral (SOURCE_DIR "/extension/shared/storage.js"));
+  QVERIFY2 (storageFile.open (QIODevice::ReadOnly), qPrintable (storageFile.errorString ()));
+  const QString storageContent = QString::fromUtf8 (storageFile.readAll ());
+
+  for (const QString &id : cppIds)
+    {
+      QVERIFY2 (storageContent.contains (QStringLiteral ("id: \"%1\"").arg (id)),
+                qPrintable (QStringLiteral ("Provider %1 in C++ registry missing from storage.js DEFAULT_PROVIDERS").arg (id)));
+    }
+}
+
+void
+ProviderRegistryTest::minimaxNormalizeSnapshotHandlesNullRaw ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/minimax.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
+  QVERIFY (fnStart >= 0);
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+
+  QVERIFY (fnBody.contains (QStringLiteral ("raw.weekly == null")));
+  QVERIFY (fnBody.contains (QStringLiteral ("raw.fiveHour == null")));
+  QVERIFY (fnBody.contains (QStringLiteral ("raw.status")));
+  QVERIFY (fnBody.contains (QStringLiteral ("\"parse_error\"")));
+}
+
+void
+ProviderRegistryTest::minimaxNormalizeSnapshotHandlesMissingFields ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/minimax.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
+  QVERIFY (fnStart >= 0);
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+
+  QVERIFY (fnBody.contains (QStringLiteral ("raw.weekly != null")));
+  QVERIFY (fnBody.contains (QStringLiteral ("raw.fiveHour != null")));
+}
+
+void
+ProviderRegistryTest::extensionManifestHostPermissionsMatchProviders ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/manifest.json"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  for (const QString &id : registry.providerIds ())
+    {
+      const ProviderDefinition provider = registry.provider (id);
+      const QString host = QUrl (provider.loginUrl).host ();
+      QVERIFY2 (!host.isEmpty (),
+                qPrintable (QStringLiteral ("Provider %1 has no host in loginUrl").arg (id)));
+      QVERIFY2 (content.contains (host),
+                qPrintable (QStringLiteral ("manifest.json missing host_permission for %1 (%2)").arg (id, host)));
+    }
+}
+
+void
+ProviderRegistryTest::extractionModeTabMatchesTabExtractionInServiceWorker ()
+{
+  QFile swFile (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (swFile.open (QIODevice::ReadOnly), qPrintable (swFile.errorString ()));
+  const QString swContent = QString::fromUtf8 (swFile.readAll ());
+
+  QVERIFY (swContent.contains (QStringLiteral ("TAB_PROVIDER_IDS")));
+
+  const QStringList tabProviders = { QStringLiteral ("codex"),
+                                      QStringLiteral ("kimi-code"),
+                                      QStringLiteral ("glm-coding"),
+                                      QStringLiteral ("minimax") };
+
+  for (const QString &id : tabProviders)
+    {
+      QVERIFY2 (swContent.contains (QStringLiteral ("\"%1\"").arg (id)),
+                qPrintable (QStringLiteral ("Service worker extractQuotaInPage missing provider %1").arg (id)));
+    }
+
+  QFile indexFile (QStringLiteral (SOURCE_DIR "/extension/providers/index.js"));
+  QVERIFY2 (indexFile.open (QIODevice::ReadOnly), qPrintable (indexFile.errorString ()));
+  const QString indexContent = QString::fromUtf8 (indexFile.readAll ());
+
+  QVERIFY (indexContent.contains (QStringLiteral ("extractionMode === \"tab\"")));
+}
+
+void
+ProviderRegistryTest::storageDefaultProvidersMatchCppRegistry ()
+{
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  const QStringList cppIds = registry.providerIds ();
+
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/storage.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  for (const QString &id : cppIds)
+    {
+      QVERIFY2 (content.contains (QStringLiteral ("id: \"%1\"").arg (id)),
+                qPrintable (QStringLiteral ("storage.js DEFAULT_PROVIDERS missing %1").arg (id)));
+
+      const ProviderDefinition provider = registry.provider (id);
+      const QString host = QUrl (provider.loginUrl).host ();
+      QVERIFY2 (content.contains (host),
+                qPrintable (QStringLiteral ("storage.js missing allowedOrigin host for %1").arg (id)));
+    }
+}
+
+void
+ProviderRegistryTest::modelMigratesWebviewSourceForAllProviders ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype loadDefStart = content.indexOf (
+      QStringLiteral ("CodingPlanModel::loadSnapshots"));
+  QVERIFY (loadDefStart >= 0);
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), loadDefStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString loadBody = content.mid (loadDefStart, braceEnd - loadDefStart + 1);
+  QVERIFY (loadBody.contains (QStringLiteral ("\"webview\"")));
+  QVERIFY (loadBody.contains (QStringLiteral ("BrowserExt")));
+
+  QVERIFY (!content.contains (QStringLiteral ("QWebEngineView")));
+  QVERIFY (!content.contains (QStringLiteral ("QWebChannel")));
+  QVERIFY (!content.contains (QStringLiteral ("QtWebEngine")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

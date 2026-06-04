@@ -10,10 +10,11 @@ DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quot
 - `src/codingplanmodel.h/cpp` — QML-facing model. Holds `ProviderRegistry`, `QuotaSnapshot` list, wires `BrowserExtProvider` signals. Persisted snapshots via QSettings. Filters displayed providers by what the extension reports as enabled.
 - `src/websocket_server.h/cpp` — `QWebSocketServer` on `127.0.0.1:18765`. Token-based auth, JSON heartbeat, message routing. Only one client at a time (new connection discards old). Token file saved with owner-only permissions.
 - `src/browser_ext_provider.h/cpp` — Sends `refresh_request`/`open_console` to extension, receives `refresh_result`/`refresh_progress` back. Has per-request timeout.
-- `src/providerregistry.h/cpp` — Static provider definitions (`codex`, `kimi-code`, `glm-coding`) with `loginUrl`, `consoleUrl`, `SourceType::BrowserExt`. Also defines `QuotaSnapshot`, `SnapshotStatus`, `PanelSeverity` enums.
+- `src/providerregistry.h/cpp` — Static provider definitions (`codex`, `kimi-code`, `glm-coding`, `minimax`) with `loginUrl`, `consoleUrl`, `SourceType::BrowserExt`. Also defines `QuotaSnapshot`, `SnapshotStatus`, `PanelSeverity` enums.
 - `package/main.qml` — Panel ring + popup UI. No Qt WebEngine import.
 - `extension/` — Chrome Extension MV3. `service-worker.js` manages WebSocket, queues refresh requests, extracts quota via tab-based content scripts for SPA providers. `shared/ws-protocol.js` is the single source of truth for message types and `WS_URL`.
-- `extension/providers/*.js` — Per-provider objects with `extractQuota` and `normalizeSnapshot`.
+- `extension/providers/index.js` — Central provider registry. Exports `ALL_PROVIDERS`, `buildProviderMap()`, `getTabProviderIds()`. Add new providers here and create a corresponding `.js` file.
+- `extension/providers/*.js` — Per-provider objects with `id`, `extractionMode`, `extractQuota`, `normalizeSnapshot`.
 
 ### WebSocket Protocol
 
@@ -24,7 +25,7 @@ Message types are defined in `extension/shared/ws-protocol.js` and must stay in 
 - `open_console` — open a URL in browser tab
 - `heartbeat` — keep-alive (JSON, not WebSocket ping)
 
-Provider IDs: `"codex"`, `"kimi-code"`, `"glm-coding"` — used identically on both sides.
+Provider IDs: `"codex"`, `"kimi-code"`, `"glm-coding"`, `"minimax"` — used identically on both sides.
 
 ## Build & Test
 
