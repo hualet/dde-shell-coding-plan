@@ -259,12 +259,18 @@ async function drainRefreshQueue() {
       const result = await extractProviderQuota(provider, wsTimeout);
       const data = buildCacheData(provider, result);
 
+      if (result._debug) {
+        log("drainRefreshQueue:", providerId, "debug:", JSON.stringify(result._debug));
+      }
+      log("drainRefreshQueue:", providerId, "data: weeklyRatio=", data.weeklyRemainingRatio, "fiveHourRatio=", data.fiveHourRemainingRatio, "balanceText=", data.weeklyBalanceText, "fiveHourText=", data.fiveHourBalanceText);
+
       if (wsRequestId) {
+        const { _debug, ...wsData } = data;
         sendJson({
           type: MSG_TYPE_REFRESH_RESULT,
           requestId: wsRequestId,
           provider: providerId,
-          data,
+          data: wsData,
         });
       }
 
@@ -309,6 +315,7 @@ function buildCacheData(provider, result) {
     updatedAt: new Date().toISOString(),
     consoleUrl: provider.consoleUrl || "",
     message: result.message || "",
+    _debug: result._debug || undefined,
   };
 }
 
@@ -550,7 +557,7 @@ function extractQuotaInPage(providerId) {
           const payload = JSON.parse(request.responseText);
           const usages = Array.isArray(payload.usages) ? payload.usages : [];
           const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
-          if (!usage) return null;
+          if (!usage) return { debug: { rawPayload: payload, reason: "no FEATURE_CODING usage" }, weekly: null, fiveHour: null };
 
           const clampRatio = (v) => Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1;
           const pctText = (v) => v >= 0 ? Math.round(v * 100) + "%" : "";
@@ -568,8 +575,17 @@ function extractQuotaInPage(providerId) {
           const fiveHour = toQuota(
             Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
           );
-          if (!weekly && !fiveHour) return null;
+
+          const debug = {
+            weeklyDetail: usage.detail,
+            fiveHourDetail: Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null,
+            weeklyResult: weekly,
+            fiveHourResult: fiveHour,
+          };
+
+          if (!weekly && !fiveHour) return { debug, weekly: null, fiveHour: null };
           return {
+            debug,
             weekly: weekly != null ? weekly.ratio : null,
             fiveHour: fiveHour != null ? fiveHour.ratio : null,
           };
@@ -675,7 +691,7 @@ function extractQuotaInPage(providerId) {
     if (isLogin) {
       return { success: false, error: "auth_error:未登录 " + provider.providerName + "，请先在浏览器中登录" };
     }
-    return { success: false, needsRetry: true, error: "Could not find " + provider.providerName + " quota info on rendered page" };
+    return { success: false, needsRetry: true, error: "Could not find " + provider.providerName + " quota info on rendered page", debug: parsed?.debug };
   }
 
   return {
@@ -692,6 +708,7 @@ function extractQuotaInPage(providerId) {
       remainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : (parsed.fiveHour != null ? clamp(parsed.fiveHour) : -1),
       balanceText: parsed.weekly != null ? pct(clamp(parsed.weekly)) : (parsed.fiveHour != null ? pct(clamp(parsed.fiveHour)) : ""),
       updatedAt: new Date().toISOString(),
+      _debug: parsed.debug || undefined,
     }
   };
 }
