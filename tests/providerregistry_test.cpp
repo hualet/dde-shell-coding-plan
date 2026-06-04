@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "providerregistry.h"
+#include "codingplanmodel.h"
 
 #include <QFile>
+#include <QSettings>
 #include <QTest>
 
 class ProviderRegistryTest : public QObject
@@ -26,6 +28,8 @@ private slots:
   void fiveHourDefaultIsNegativeOne ();
   void fiveHourMissingFieldStaysNegativeOne ();
   void fiveHourQuotaPercentFallsBackToText ();
+  void panelQmlDockWidgetUsesOneFiveHourRingPerProvider ();
+  void modelTooltipUsesFiveHourQuota ();
   void browserExtResultParsesCorrectly ();
   void sourceTypeIsBrowserExt ();
   void panelQmlShowsExtensionConnectionStatus ();
@@ -327,6 +331,59 @@ ProviderRegistryTest::fiveHourQuotaPercentFallsBackToText ()
 
   QVERIFY (fnBody.contains (QStringLiteral ("N/A")));
   QVERIFY (fnBody.contains (QStringLiteral ("fiveHourBalanceText")));
+}
+
+void
+ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString qml = QString::fromUtf8 (file.readAll ());
+  QVERIFY (qml.contains (QStringLiteral ("readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)")));
+  QVERIFY (qml.contains (QStringLiteral ("Repeater {")));
+  QVERIFY (qml.contains (QStringLiteral ("model: root.visibleRingCount")));
+  QVERIFY (qml.contains (QStringLiteral ("readonly property var snapshot: root.quotaSnapshots[index]")));
+  QVERIFY (qml.contains (QStringLiteral ("const lineWidth = 6")));
+  QVERIFY (qml.contains (QStringLiteral ("root.fiveHourSeverity(snapshot)")));
+  QVERIFY (qml.contains (QStringLiteral ("root.providerInitial(parent.snapshot.providerName)")));
+  QVERIFY (qml.contains (QStringLiteral ("font.pixelSize: Math.max(9, parent.width * 0.35)")));
+  QVERIFY (!qml.contains (QStringLiteral ("const outerRatio")));
+  QVERIFY (!qml.contains (QStringLiteral ("const innerRatio")));
+  QVERIFY (!qml.contains (QStringLiteral ("readonly property var widgetSnapshot")));
+}
+
+void
+ProviderRegistryTest::modelTooltipUsesFiveHourQuota ()
+{
+  QSettings settings (QStringLiteral ("deepin"),
+                      QStringLiteral ("dde-shell-coding-plan"));
+  const QVariant oldSnapshots = settings.value (QStringLiteral ("snapshots"));
+
+  {
+    CodingPlanModel model;
+    QVariantMap result;
+    result.insert (QStringLiteral ("remainingRatio"), 0.75);
+    result.insert (QStringLiteral ("balanceText"), QStringLiteral ("75%"));
+    result.insert (QStringLiteral ("fiveHourRemainingRatio"), 0.40);
+    result.insert (QStringLiteral ("fiveHourBalanceText"), QStringLiteral ("40%"));
+
+    model.setBrowserExtResult (QStringLiteral ("codex"), result);
+
+    const QString tooltip = model.tooltipText ();
+    QVERIFY (tooltip.contains (QStringLiteral ("Codex / ChatGPT: 40%")));
+    QVERIFY (!tooltip.contains (QStringLiteral ("Codex / ChatGPT: 75%")));
+  }
+
+  if (oldSnapshots.isValid ())
+    {
+      settings.setValue (QStringLiteral ("snapshots"), oldSnapshots);
+    }
+  else
+    {
+      settings.remove (QStringLiteral ("snapshots"));
+    }
+  settings.sync ();
 }
 
 void

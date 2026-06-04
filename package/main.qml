@@ -69,6 +69,17 @@ AppletItem {
         return Math.round(ratio * 100) + "%"
     }
 
+    function fiveHourSeverity(snapshot) {
+        const raw = snapshot ? snapshot.fiveHourRemainingRatio : -1
+        if (raw === undefined || raw === null || raw < 0)
+            return "error"
+        if (raw < 0.10)
+            return "critical"
+        if (raw <= 0.30)
+            return "warning"
+        return "normal"
+    }
+
     function refreshAll() {
         if (Applet.quota) {
             Applet.quota.refreshAll()
@@ -152,38 +163,22 @@ AppletItem {
                     const ctx = getContext("2d")
                     ctx.clearRect(0, 0, width, height)
                     const center = width / 2
+                    const lineWidth = 6
+                    const radius = center - lineWidth / 2
+                    const raw = snapshot.fiveHourRemainingRatio
+                    const ratio = (raw !== undefined && raw !== null && raw >= 0)
+                        ? Math.max(0, Math.min(1, raw))
+                        : 0
 
-                    const outerRadius = center - 3
-                    const outerRatio = Math.max(0, Math.min(1, snapshot.remainingRatio || 0))
-
-                    const innerRadius = center - 7
-                    const innerRaw = snapshot.fiveHourRemainingRatio
-                    const innerRatio = (innerRaw !== undefined && innerRaw !== null && innerRaw >= 0)
-                        ? Math.max(0, Math.min(1, innerRaw))
-                        : (snapshot.remainingRatio >= 0 ? Math.max(0, Math.min(1, snapshot.remainingRatio)) : 0)
-
-                    ctx.lineWidth = 3
+                    ctx.lineWidth = lineWidth
                     ctx.strokeStyle = "rgba(128, 128, 128, 0.24)"
                     ctx.beginPath()
-                    ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
+                    ctx.arc(center, center, radius, 0, Math.PI * 2)
                     ctx.stroke()
 
-                    ctx.lineWidth = 2.5
+                    ctx.strokeStyle = root.severityColor(root.fiveHourSeverity(snapshot))
                     ctx.beginPath()
-                    ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
-                    ctx.stroke()
-
-                    const color = root.severityColor(snapshot.severity)
-
-                    ctx.strokeStyle = color
-                    ctx.lineWidth = 3
-                    ctx.beginPath()
-                    ctx.arc(center, center, outerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * outerRatio)
-                    ctx.stroke()
-
-                    ctx.lineWidth = 2.5
-                    ctx.beginPath()
-                    ctx.arc(center, center, innerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * innerRatio)
+                    ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
                     ctx.stroke()
                 }
 

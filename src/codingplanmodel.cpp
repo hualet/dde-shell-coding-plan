@@ -138,10 +138,16 @@ CodingPlanModel::tooltipText () const
         {
           continue;
         }
-      const QString value
-          = snapshot.remainingRatio >= 0
-                ? QStringLiteral ("%1%").arg (qRound (snapshot.remainingRatio * 100))
-                : snapshot.message;
+      QString value = snapshot.message;
+      if (snapshot.fiveHourRemainingRatio >= 0)
+        {
+          value = QStringLiteral ("%1%").arg (
+              qRound (snapshot.fiveHourRemainingRatio * 100));
+        }
+      else if (!snapshot.fiveHourBalanceText.isEmpty ())
+        {
+          value = snapshot.fiveHourBalanceText;
+        }
       lines.append (QStringLiteral ("%1: %2").arg (snapshot.providerName, value));
     }
 
