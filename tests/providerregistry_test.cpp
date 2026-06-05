@@ -65,6 +65,7 @@ private slots:
   void extensionSendStatusUsesEnabledPlans ();
   void extensionSendStatusOnPlansChange ();
   void modelFiltersByExtensionEnabledPlans ();
+  void modelKeepsProviderFilterWhenExtensionDisconnects ();
   void modelHasSubscriptionsRespectsFilter ();
   void modelHasProviderFilterFlag ();
   void providersPropertyHasChangedSignal ();
@@ -984,6 +985,36 @@ ProviderRegistryTest::modelFiltersByExtensionEnabledPlans ()
 }
 
 void
+ProviderRegistryTest::modelKeepsProviderFilterWhenExtensionDisconnects ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  const qsizetype fnStart = content.indexOf (
+      QStringLiteral ("\nCodingPlanModel::onExtensionStatusChanged"));
+  QVERIFY2 (fnStart >= 0, "onExtensionStatusChanged not found");
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+  QVERIFY (!fnBody.contains (QStringLiteral ("m_enabledProviders.clear")));
+  QVERIFY (!fnBody.contains (QStringLiteral ("m_hasProviderFilter = false")));
+}
+
+void
 ProviderRegistryTest::modelHasSubscriptionsRespectsFilter ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
@@ -1011,7 +1042,7 @@ ProviderRegistryTest::modelHasProviderFilterFlag ()
   QVERIFY (sourceContent.contains (QStringLiteral ("CodingPlanModel::isProviderEnabled")));
   QVERIFY (sourceContent.contains (QStringLiteral ("!m_hasProviderFilter")));
   QVERIFY (sourceContent.contains (QStringLiteral ("m_hasProviderFilter = true")));
-  QVERIFY (sourceContent.contains (QStringLiteral ("m_hasProviderFilter = false")));
+  QVERIFY (!sourceContent.contains (QStringLiteral ("m_hasProviderFilter = false")));
 }
 
 void

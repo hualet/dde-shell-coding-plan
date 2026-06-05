@@ -529,13 +529,6 @@ void
 CodingPlanModel::onExtensionStatusChanged (bool connected)
 {
   Q_UNUSED (connected)
-  if (!connected)
-    {
-      m_enabledProviders.clear ();
-      m_hasProviderFilter = false;
-      emit providersChanged ();
-      emit snapshotsChanged ();
-    }
   emit extensionStatusChanged ();
 }
 
