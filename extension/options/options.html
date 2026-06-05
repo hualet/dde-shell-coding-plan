@@ -111,6 +111,7 @@
   <nav>
     <a class="active" data-panel="connection">连接配置</a>
     <a data-panel="plans">Plan 管理</a>
+    <a data-panel="refresh">刷新设置</a>
     <a data-panel="about">关于</a>
   </nav>
 </div>
@@ -147,6 +148,22 @@
     <div class="card">
       <span style="font-weight:500; display:block; margin-bottom:12px;">添加 Plan</span>
       <div class="plan-list" id="addPlanList"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-refresh">
+    <h2>刷新设置</h2>
+    <div class="card">
+      <div class="field">
+        <label for="refreshIntervalInput">自动刷新频率（分钟）</label>
+        <input type="text" id="refreshIntervalInput" placeholder="30">
+        <div class="hint">控制 Service Worker 自动刷新所有 Plan 的时间间隔。范围 5–120 分钟，默认 30 分钟。保存后立即生效。</div>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="saveIntervalBtn">保存</button>
+        <button class="btn-secondary" id="resetIntervalBtn">恢复默认</button>
+      </div>
+      <div class="hint" id="intervalStatus" style="margin-top:8px;"></div>
     </div>
   </div>
 

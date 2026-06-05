@@ -22,6 +22,9 @@ import {
   getEnabledPlans,
   setQuotaCacheEntry,
   PLANS_STORAGE_KEY,
+  getRefreshInterval,
+  clampRefreshInterval,
+  REFRESH_INTERVAL_STORAGE_KEY,
 } from "./shared/storage.js";
 
 const PROVIDERS = buildProviderMap();
@@ -846,6 +849,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
       sendStatus().catch((err) => error("sendStatus failed", err));
     }
   }
+
+  if (area === "local" && changes[REFRESH_INTERVAL_STORAGE_KEY]) {
+    const oldVal = clampRefreshInterval(changes[REFRESH_INTERVAL_STORAGE_KEY].oldValue);
+    const newVal = clampRefreshInterval(changes[REFRESH_INTERVAL_STORAGE_KEY].newValue);
+    if (oldVal !== newVal) {
+      log("refresh interval changed to", newVal, "minutes (was", oldVal, "), rescheduling alarm");
+      scheduleAutoRefresh();
+    } else {
+      log("refresh interval changed but normalized value unchanged (", oldVal, "), skipping reschedule");
+    }
+  }
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -862,8 +876,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+async function scheduleAutoRefresh() {
+  const minutes = await getRefreshInterval();
+  log("scheduleAutoRefresh: interval =", minutes, "minutes");
+  await chrome.alarms.clear(AUTO_REFRESH_ALARM);
+  chrome.alarms.create(AUTO_REFRESH_ALARM, { periodInMinutes: minutes });
+}
+
 chrome.alarms.create(ALARM_NAME, { periodInMinutes: ALARM_INTERVAL_MINUTES });
-chrome.alarms.create(AUTO_REFRESH_ALARM, { periodInMinutes: AUTO_REFRESH_INTERVAL_MINUTES });
+scheduleAutoRefresh();
 
 log("service worker starting, initial connect");
 connect();

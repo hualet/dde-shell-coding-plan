@@ -91,3 +91,37 @@ export async function setRefreshState(state) {
 export function isPlanExpired(cachedAt, ttlMs = 30 * 60 * 1000) {
   return !cachedAt || Date.now() - cachedAt > ttlMs;
 }
+
+const REFRESH_INTERVAL_STORAGE_KEY = "dde-coding-plan-refresh-interval";
+const REFRESH_INTERVAL_DEFAULT = 30;
+const REFRESH_INTERVAL_MIN = 5;
+const REFRESH_INTERVAL_MAX = 120;
+
+export { REFRESH_INTERVAL_STORAGE_KEY, REFRESH_INTERVAL_DEFAULT, REFRESH_INTERVAL_MIN, REFRESH_INTERVAL_MAX };
+
+export function clampRefreshInterval(minutes) {
+  if (minutes == null) return REFRESH_INTERVAL_DEFAULT;
+  const n = Number(minutes);
+  if (Number.isNaN(n)) return REFRESH_INTERVAL_DEFAULT;
+  if (!Number.isFinite(n)) {
+    return n > 0 ? REFRESH_INTERVAL_MAX : REFRESH_INTERVAL_MIN;
+  }
+  return Math.max(REFRESH_INTERVAL_MIN, Math.min(REFRESH_INTERVAL_MAX, Math.round(n)));
+}
+
+export async function getRefreshInterval() {
+  try {
+    const result = await chrome.storage.local.get(REFRESH_INTERVAL_STORAGE_KEY);
+    const val = result[REFRESH_INTERVAL_STORAGE_KEY];
+    if (val == null) return REFRESH_INTERVAL_DEFAULT;
+    return clampRefreshInterval(val);
+  } catch {
+    return REFRESH_INTERVAL_DEFAULT;
+  }
+}
+
+export async function setRefreshInterval(minutes) {
+  const clamped = clampRefreshInterval(minutes);
+  await chrome.storage.local.set({ [REFRESH_INTERVAL_STORAGE_KEY]: clamped });
+  return clamped;
+}
