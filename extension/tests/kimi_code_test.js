@@ -250,10 +250,16 @@ const { normalizeSnapshot } = kimiCodeProvider;
   assertEqual(q, null, "used=Infinity must return null");
 }
 
-// 25. used="0" (string zero) must return null — strict type check
+// 25. used="0" (string zero) from the live Kimi API is accepted
 {
   const q = detailToQuota({ used: "0", limit: 100 });
-  assertEqual(q, null, "used='0' string must return null");
+  assert(q !== null, "used='0',limit=100 must return non-null");
+  if (q) {
+    assertEqual(q.ratio, 1, "used='0',limit=100 => ratio=1");
+    assertEqual(q.text, "100%", "used='0',limit=100 => text=100%");
+    assertEqual(q.used, 0, "used='0',limit=100 => used=0");
+    assertEqual(q.total, 100, "used='0',limit=100 => total=100");
+  }
 }
 
 // 26. Explicit 1%: used=1, limit=100, remaining=1 => ratio=0.99
@@ -264,10 +270,16 @@ const { normalizeSnapshot } = kimiCodeProvider;
   assertEqual(q.text, "99%", "used=1,limit=100 => text=99%");
 }
 
-// 27. used is a numeric string "10" — must return null (strict typeof check)
+// 27. used and limit are numeric strings from the live Kimi API
 {
-  const q = detailToQuota({ used: "10", limit: 100 });
-  assertEqual(q, null, "used='10' string must return null");
+  const q = detailToQuota({ used: "50", limit: "100", remaining: "50" });
+  assert(q !== null, "used='50',limit='100' must return non-null");
+  if (q) {
+    assertEqual(q.ratio, 0.5, "used='50',limit='100' => ratio=0.5");
+    assertEqual(q.text, "50%", "used='50',limit='100' => text=50%");
+    assertEqual(q.used, 50, "used='50',limit='100' => used=50");
+    assertEqual(q.total, 100, "used='50',limit='100' => total=100");
+  }
 }
 
 console.log(`\nkimi-code tests: ${passed} passed, ${failed} failed`);

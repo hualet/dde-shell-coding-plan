@@ -1302,7 +1302,8 @@ ProviderRegistryTest::kimiDetailToQuotaIgnoresApiRemaining ()
 
   QVERIFY (!fnBody.contains (QStringLiteral ("detail.remaining")));
   QVERIFY (!fnBody.contains (QStringLiteral ("d.remaining")));
-  QVERIFY (fnBody.contains (QStringLiteral ("limit - detail.used")));
+  QVERIFY (fnBody.contains (QStringLiteral ("Number(detail.used)")));
+  QVERIFY (fnBody.contains (QStringLiteral ("limit - used")));
 
   const qsizetype clampFnStart = content.indexOf (QStringLiteral ("function clampRatio"));
   QVERIFY (clampFnStart >= 0);
@@ -1340,7 +1341,8 @@ ProviderRegistryTest::kimiServiceWorkerToQuotaIgnoresApiRemaining ()
 
   QVERIFY (kimiBlock.contains (QStringLiteral ("const toQuota")));
   QVERIFY (!kimiBlock.contains (QStringLiteral ("d.remaining")));
-  QVERIFY (kimiBlock.contains (QStringLiteral ("limit - d.used")));
+  QVERIFY (kimiBlock.contains (QStringLiteral ("Number(d.used)")));
+  QVERIFY (kimiBlock.contains (QStringLiteral ("limit - used")));
 }
 
 void
