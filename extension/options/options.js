@@ -9,6 +9,12 @@ import {
   removePlan,
   getQuotaCache,
   QUOTA_CACHE_KEY,
+  getRefreshInterval,
+  setRefreshInterval,
+  REFRESH_INTERVAL_DEFAULT,
+  REFRESH_INTERVAL_MIN,
+  REFRESH_INTERVAL_MAX,
+  REFRESH_INTERVAL_STORAGE_KEY,
 } from "../shared/storage.js";
 
 const statusDot = document.getElementById("statusDot");
@@ -20,6 +26,10 @@ const refreshAllBtn = document.getElementById("refreshAllBtn");
 const planList = document.getElementById("planList");
 const addPlanList = document.getElementById("addPlanList");
 const toastEl = document.getElementById("toast");
+const refreshIntervalInput = document.getElementById("refreshIntervalInput");
+const saveIntervalBtn = document.getElementById("saveIntervalBtn");
+const resetIntervalBtn = document.getElementById("resetIntervalBtn");
+const intervalStatus = document.getElementById("intervalStatus");
 
 const STATUS_LABELS = {
   disconnected: "未连接",
@@ -161,6 +171,11 @@ async function init() {
     if (area === "local" && changes[QUOTA_CACHE_KEY]) {
       renderPlans();
     }
+    if (area === "local" && changes[REFRESH_INTERVAL_STORAGE_KEY]) {
+      const val = changes[REFRESH_INTERVAL_STORAGE_KEY].newValue;
+      refreshIntervalInput.value = val;
+      intervalStatus.textContent = `当前值: ${val} 分钟（范围 ${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX}，默认 ${REFRESH_INTERVAL_DEFAULT}）`;
+    }
   });
 
   saveTokenBtn.addEventListener("click", async () => {
@@ -192,6 +207,33 @@ async function init() {
   refreshAllBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ action: "manual-refresh", providers: null });
     showToast("已请求刷新全部 Plan");
+  });
+
+  const currentInterval = await getRefreshInterval();
+  refreshIntervalInput.value = currentInterval;
+  intervalStatus.textContent = `当前值: ${currentInterval} 分钟（范围 ${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX}，默认 ${REFRESH_INTERVAL_DEFAULT}）`;
+
+  saveIntervalBtn.addEventListener("click", async () => {
+    const raw = refreshIntervalInput.value.trim();
+    const n = Number(raw);
+    if (!raw || !Number.isFinite(n)) {
+      showToast(`请输入有效数字（${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX}）`);
+      return;
+    }
+    if (n < REFRESH_INTERVAL_MIN || n > REFRESH_INTERVAL_MAX) {
+      showToast(`刷新频率范围为 ${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX} 分钟，已自动校正`);
+    }
+    const saved = await setRefreshInterval(n);
+    refreshIntervalInput.value = saved;
+    intervalStatus.textContent = `已保存: ${saved} 分钟（范围 ${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX}，默认 ${REFRESH_INTERVAL_DEFAULT}）`;
+    showToast("刷新频率已保存: " + saved + " 分钟");
+  });
+
+  resetIntervalBtn.addEventListener("click", async () => {
+    const saved = await setRefreshInterval(REFRESH_INTERVAL_DEFAULT);
+    refreshIntervalInput.value = saved;
+    intervalStatus.textContent = `已恢复默认: ${saved} 分钟（范围 ${REFRESH_INTERVAL_MIN}–${REFRESH_INTERVAL_MAX}，默认 ${REFRESH_INTERVAL_DEFAULT}）`;
+    showToast("已恢复默认刷新频率: " + saved + " 分钟");
   });
 
   await renderPlans();
