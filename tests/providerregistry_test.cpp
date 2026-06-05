@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 #include <QSettings>
 #include <QTest>
@@ -52,6 +53,8 @@ private slots:
   void websocketServerDiscardClientNoDoubleDelete ();
   void browserExtProviderHeaderExists ();
   void browserExtProviderCppExists ();
+  void browserExtProviderAllowsSlowQuotaPages ();
+  void extensionTabExtractionWaitsForSpaRendering ();
   void cmakeUsesWebSockets ();
   void cmakeRemovesWebEngine ();
   void providerDefinitionFieldsCleaned ();
@@ -701,6 +704,61 @@ ProviderRegistryTest::browserExtProviderCppExists ()
   QVERIFY (content.contains (QStringLiteral ("resultToSnapshot")));
   QVERIFY (content.contains (QStringLiteral ("BrowserExt")));
   QVERIFY (content.contains (QStringLiteral ("kProviderTimeoutMs")));
+}
+
+void
+ProviderRegistryTest::browserExtProviderAllowsSlowQuotaPages ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/browser_ext_provider.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  const QRegularExpression timeoutRe (
+      QStringLiteral ("kProviderTimeoutMs\\s*=\\s*(\\d+)"));
+  const QRegularExpressionMatch match = timeoutRe.match (content);
+  QVERIFY2 (match.hasMatch (), "kProviderTimeoutMs constant not found");
+
+  const int timeoutMs = match.captured (1).toInt ();
+  QVERIFY2 (timeoutMs >= 30000,
+            qPrintable (QStringLiteral (
+                "Browser extension provider timeout is too short: %1ms")
+                            .arg (timeoutMs)));
+}
+
+void
+ProviderRegistryTest::extensionTabExtractionWaitsForSpaRendering ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  const QRegularExpression initialDelayRe (
+      QStringLiteral ("TAB_EXTRACTION_INITIAL_DELAY_MS\\s*=\\s*(\\d+)"));
+  const QRegularExpression retryDelayRe (
+      QStringLiteral ("TAB_EXTRACTION_RETRY_DELAY_MS\\s*=\\s*(\\d+)"));
+  const QRegularExpression retryCountRe (
+      QStringLiteral ("TAB_EXTRACTION_RETRY_COUNT\\s*=\\s*(\\d+)"));
+
+  const QRegularExpressionMatch initialDelayMatch = initialDelayRe.match (content);
+  const QRegularExpressionMatch retryDelayMatch = retryDelayRe.match (content);
+  const QRegularExpressionMatch retryCountMatch = retryCountRe.match (content);
+
+  QVERIFY2 (initialDelayMatch.hasMatch (),
+            "TAB_EXTRACTION_INITIAL_DELAY_MS constant not found");
+  QVERIFY2 (retryDelayMatch.hasMatch (),
+            "TAB_EXTRACTION_RETRY_DELAY_MS constant not found");
+  QVERIFY2 (retryCountMatch.hasMatch (),
+            "TAB_EXTRACTION_RETRY_COUNT constant not found");
+
+  const int initialDelayMs = initialDelayMatch.captured (1).toInt ();
+  const int retryDelayMs = retryDelayMatch.captured (1).toInt ();
+  const int retryCount = retryCountMatch.captured (1).toInt ();
+  const int renderingWaitMs = initialDelayMs + retryDelayMs * retryCount;
+
+  QVERIFY2 (renderingWaitMs >= 10000,
+            qPrintable (QStringLiteral (
+                "Tab extraction rendering wait is too short: %1ms")
+                            .arg (renderingWaitMs)));
 }
 
 void

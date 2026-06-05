@@ -29,6 +29,10 @@ import {
 
 const PROVIDERS = buildProviderMap();
 const TAB_PROVIDER_IDS = getTabProviderIds();
+const DEFAULT_REFRESH_TIMEOUT_MS = 30000;
+const TAB_EXTRACTION_INITIAL_DELAY_MS = 3000;
+const TAB_EXTRACTION_RETRY_DELAY_MS = 2500;
+const TAB_EXTRACTION_RETRY_COUNT = 4;
 
 let ws = null;
 let authenticated = false;
@@ -210,7 +214,7 @@ function handleAuthResult(msg) {
 
 function enqueueRefresh(providerIds, wsRequestId, wsTimeout) {
   for (const pid of providerIds) {
-    refreshQueue.push({ providerId: pid, wsRequestId: wsRequestId || null, wsTimeout: wsTimeout || 20000 });
+    refreshQueue.push({ providerId: pid, wsRequestId: wsRequestId || null, wsTimeout: wsTimeout || DEFAULT_REFRESH_TIMEOUT_MS });
   }
   log("enqueueRefresh: queue size now", refreshQueue.length, "running:", refreshRunning);
   if (!refreshRunning) {
@@ -351,7 +355,7 @@ async function handleRefreshRequest(msg) {
     return;
   }
 
-  enqueueRefresh(filtered, requestId, timeout || 15000);
+  enqueueRefresh(filtered, requestId, timeout || DEFAULT_REFRESH_TIMEOUT_MS);
 }
 
 function extractProviderQuota(provider, timeout) {
@@ -442,8 +446,8 @@ function extractViaTab(provider, timeout) {
             }
 
             if (!lastResult || lastResult.needsRetry) {
-              for (let attempt = 1; attempt <= 4; attempt++) {
-                await new Promise(r => setTimeout(r, 1500));
+              for (let attempt = 1; attempt <= TAB_EXTRACTION_RETRY_COUNT; attempt++) {
+                await new Promise(r => setTimeout(r, TAB_EXTRACTION_RETRY_DELAY_MS));
                 if (settled) { cleanup(); return; }
 
                 const retryResults = await chrome.scripting.executeScript({
@@ -478,7 +482,7 @@ function extractViaTab(provider, timeout) {
             error("extractViaTab: executeScript error for", provider.id, err.message);
             reject(new Error(err.message));
           }
-        }, 1500);
+        }, TAB_EXTRACTION_INITIAL_DELAY_MS);
       };
 
       chrome.tabs.onUpdated.addListener(updatedListener);
@@ -813,7 +817,7 @@ function handleOpenConsole(msg) {
 async function enqueueRefreshAll() {
   const enabled = await getEnabledPlans();
   if (enabled.length === 0) return;
-  enqueueRefresh(enabled, null, 20000);
+  enqueueRefresh(enabled, null, DEFAULT_REFRESH_TIMEOUT_MS);
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -822,7 +826,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "manual-refresh") {
     const providers = message.providers;
     if (providers && Array.isArray(providers) && providers.length > 0) {
-      enqueueRefresh(providers, null, 20000);
+      enqueueRefresh(providers, null, DEFAULT_REFRESH_TIMEOUT_MS);
     } else {
       enqueueRefreshAll();
     }

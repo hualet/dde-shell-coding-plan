@@ -8,7 +8,7 @@
 
 namespace
 {
-constexpr int kProviderTimeoutMs = 15000;
+constexpr int kProviderTimeoutMs = 30000;
 }
 
 BrowserExtProvider::BrowserExtProvider (WebSocketServer *wsServer,
