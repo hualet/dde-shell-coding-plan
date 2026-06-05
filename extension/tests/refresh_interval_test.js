@@ -69,20 +69,20 @@ assertEqual(clampRefreshInterval(-5), REFRESH_INTERVAL_MIN, "clamp -5 => min");
 assertEqual(clampRefreshInterval(10.4), 10, "clamp 10.4 => 10 (rounds down)");
 assertEqual(clampRefreshInterval(10.5), 11, "clamp 10.5 => 11 (rounds up)");
 assertEqual(clampRefreshInterval(10.7), 11, "clamp 10.7 => 11 (rounds up)");
-assertEqual(clampRefreshInterval(NaN), REFRESH_INTERVAL_DEFAULT, "clamp NaN => default 30");
+assertEqual(clampRefreshInterval(NaN), REFRESH_INTERVAL_DEFAULT, "clamp NaN => default 5");
 assertEqual(clampRefreshInterval(Infinity), REFRESH_INTERVAL_MAX, "clamp Infinity => max 120");
 assertEqual(clampRefreshInterval(-Infinity), REFRESH_INTERVAL_MIN, "clamp -Infinity => min 5");
 assertEqual(clampRefreshInterval("50"), 50, "clamp '50' => 50 (string number)");
-assertEqual(clampRefreshInterval("abc"), REFRESH_INTERVAL_DEFAULT, "clamp 'abc' => default 30");
-assertEqual(clampRefreshInterval(null), REFRESH_INTERVAL_DEFAULT, "clamp null => default 30");
-assertEqual(clampRefreshInterval(undefined), REFRESH_INTERVAL_DEFAULT, "clamp undefined => default 30");
+assertEqual(clampRefreshInterval("abc"), REFRESH_INTERVAL_DEFAULT, "clamp 'abc' => default 5");
+assertEqual(clampRefreshInterval(null), REFRESH_INTERVAL_DEFAULT, "clamp null => default 5");
+assertEqual(clampRefreshInterval(undefined), REFRESH_INTERVAL_DEFAULT, "clamp undefined => default 5");
 
 // --- getRefreshInterval tests ---
 
 resetStorage();
 {
   const val = await getRefreshInterval();
-  assertEqual(val, REFRESH_INTERVAL_DEFAULT, "getRefreshInterval with empty storage => default 30");
+  assertEqual(val, REFRESH_INTERVAL_DEFAULT, "getRefreshInterval with empty storage => default 5");
 }
 
 {
@@ -106,7 +106,7 @@ resetStorage();
 {
   storageState[REFRESH_INTERVAL_STORAGE_KEY] = "abc";
   const val = await getRefreshInterval();
-  assertEqual(val, REFRESH_INTERVAL_DEFAULT, "getRefreshInterval with stored 'abc' => default 30");
+  assertEqual(val, REFRESH_INTERVAL_DEFAULT, "getRefreshInterval with stored 'abc' => default 5");
 }
 
 {
@@ -144,28 +144,28 @@ resetStorage();
 
 {
   const saved = await setRefreshInterval(REFRESH_INTERVAL_DEFAULT);
-  assertEqual(saved, REFRESH_INTERVAL_DEFAULT, "setRefreshInterval(default) returns default 30");
-  assertEqual(storageState[REFRESH_INTERVAL_STORAGE_KEY], REFRESH_INTERVAL_DEFAULT, "setRefreshInterval(default) stores default 30");
+  assertEqual(saved, REFRESH_INTERVAL_DEFAULT, "setRefreshInterval(default) returns default 5");
+  assertEqual(storageState[REFRESH_INTERVAL_STORAGE_KEY], REFRESH_INTERVAL_DEFAULT, "setRefreshInterval(default) stores default 5");
 }
 
 // --- Same-value skip simulation ---
 
 resetStorage();
 {
-  await setRefreshInterval(30);
+  await setRefreshInterval(5);
   const oldVal = clampRefreshInterval(storageState[REFRESH_INTERVAL_STORAGE_KEY]);
-  await setRefreshInterval(30);
+  await setRefreshInterval(5);
   const newVal = clampRefreshInterval(storageState[REFRESH_INTERVAL_STORAGE_KEY]);
   assertEqual(oldVal, newVal, "same-value set produces equal normalized values");
   assert(oldVal === newVal, "same-value comparison: old === new, would skip reschedule");
 }
 
 {
-  await setRefreshInterval(30);
+  await setRefreshInterval(5);
   const oldVal = clampRefreshInterval(storageState[REFRESH_INTERVAL_STORAGE_KEY]);
-  await setRefreshInterval(29.7);
+  await setRefreshInterval(4.7);
   const newVal = clampRefreshInterval(storageState[REFRESH_INTERVAL_STORAGE_KEY]);
-  assertEqual(oldVal, newVal, "29.7 rounds to 30, same as current 30, would skip reschedule");
+  assertEqual(oldVal, newVal, "4.7 rounds to 5, same as current 5, would skip reschedule");
 }
 
 {
@@ -178,10 +178,10 @@ resetStorage();
 
 // --- Constants consistency ---
 
-assertEqual(REFRESH_INTERVAL_DEFAULT, 30, "REFRESH_INTERVAL_DEFAULT is 30");
+assertEqual(REFRESH_INTERVAL_DEFAULT, 5, "REFRESH_INTERVAL_DEFAULT is 5");
 assertEqual(REFRESH_INTERVAL_MIN, 5, "REFRESH_INTERVAL_MIN is 5");
 assertEqual(REFRESH_INTERVAL_MAX, 120, "REFRESH_INTERVAL_MAX is 120");
-assert(REFRESH_INTERVAL_MIN < REFRESH_INTERVAL_DEFAULT, "MIN < DEFAULT");
+assert(REFRESH_INTERVAL_MIN <= REFRESH_INTERVAL_DEFAULT, "MIN <= DEFAULT");
 assert(REFRESH_INTERVAL_DEFAULT < REFRESH_INTERVAL_MAX, "DEFAULT < MAX");
 
 console.log("\n=== Refresh Interval Test Results ===");

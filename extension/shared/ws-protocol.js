@@ -13,4 +13,4 @@ export const ALARM_INTERVAL_MINUTES = 1;
 export const TOKEN_STORAGE_KEY = "dde-coding-plan-token";
 export const STATUS_STORAGE_KEY = "ws-status";
 export const AUTO_REFRESH_ALARM = "auto-refresh";
-export const AUTO_REFRESH_INTERVAL_MINUTES = 30;
+export const AUTO_REFRESH_INTERVAL_MINUTES = 5;

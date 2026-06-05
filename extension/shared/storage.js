@@ -93,7 +93,7 @@ export function isPlanExpired(cachedAt, ttlMs = 30 * 60 * 1000) {
 }
 
 const REFRESH_INTERVAL_STORAGE_KEY = "dde-coding-plan-refresh-interval";
-const REFRESH_INTERVAL_DEFAULT = 30;
+const REFRESH_INTERVAL_DEFAULT = 5;
 const REFRESH_INTERVAL_MIN = 5;
 const REFRESH_INTERVAL_MAX = 120;
 
