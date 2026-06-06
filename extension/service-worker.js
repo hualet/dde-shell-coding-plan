@@ -429,10 +429,7 @@ function extractViaTab(provider, timeout) {
           }
 
           try {
-            await chrome.scripting.executeScript({
-              target: { tabId },
-              files: ["shared/tab-extractor-iife.js"],
-            });
+            await injectTabExtractor(tabId);
 
             const results = await chrome.scripting.executeScript({
               target: { tabId },
@@ -454,6 +451,8 @@ function extractViaTab(provider, timeout) {
               for (let attempt = 1; attempt <= TAB_EXTRACTION_RETRY_COUNT; attempt++) {
                 await new Promise(r => setTimeout(r, TAB_EXTRACTION_RETRY_DELAY_MS));
                 if (settled) { cleanup(); return; }
+
+                await injectTabExtractor(tabId);
 
                 const retryResults = await chrome.scripting.executeScript({
                   target: { tabId },
@@ -492,6 +491,13 @@ function extractViaTab(provider, timeout) {
 
       chrome.tabs.onUpdated.addListener(updatedListener);
     });
+  });
+}
+
+function injectTabExtractor(tabId) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["shared/tab-extractor-iife.js"],
   });
 }
 

@@ -75,6 +75,7 @@ private slots:
   void extensionProvidersIndexExists ();
   void extensionProvidersHaveExtractionMode ();
   void extensionServiceWorkerUsesProviderIndex ();
+  void extensionTabExtractionReinjectsIifeOnRetry ();
   void providerIdSetConsistencyCppExtension ();
   void minimaxNormalizeSnapshotHandlesNullRaw ();
   void minimaxNormalizeSnapshotHandlesMissingFields ();
@@ -1151,6 +1152,37 @@ ProviderRegistryTest::extensionServiceWorkerUsesProviderIndex ()
   QVERIFY (!content.contains (QStringLiteral ("import { codexProvider }")));
   QVERIFY (!content.contains (QStringLiteral ("import { kimiCodeProvider }")));
   QVERIFY (!content.contains (QStringLiteral ("import { glmCodingProvider }")));
+}
+
+void
+ProviderRegistryTest::extensionTabExtractionReinjectsIifeOnRetry ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  const qsizetype fnStart = content.indexOf (
+      QStringLiteral ("function extractViaTab(provider, timeout)"));
+  QVERIFY2 (fnStart >= 0, "extractViaTab function not found");
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+  int depth = 0;
+  qsizetype braceEnd = braceStart;
+  for (; braceEnd < content.size (); ++braceEnd)
+    {
+      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
+      else if (content[braceEnd] == QLatin1Char ('}'))
+        {
+          --depth;
+          if (depth == 0) break;
+        }
+    }
+
+  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
+  QCOMPARE (fnBody.count (QStringLiteral ("injectTabExtractor(tabId)")), 2);
+  QVERIFY (content.contains (QStringLiteral ("function injectTabExtractor(tabId)")));
+  QVERIFY (content.contains (QStringLiteral ("files: [\"shared/tab-extractor-iife.js\"]")));
 }
 
 void
