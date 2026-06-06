@@ -20,7 +20,6 @@ namespace
 constexpr auto kSettingsOrganization = "deepin";
 constexpr auto kSettingsApplication = "dde-shell-coding-plan";
 constexpr auto kSnapshotsKey = "snapshots";
-constexpr int kRefreshIntervalMs = 5 * 60 * 1000;
 
 SnapshotStatus
 statusFromString (const QString &status)
@@ -65,11 +64,6 @@ CodingPlanModel::CodingPlanModel (QObject *parent)
     : QObject (parent), m_registry (ProviderRegistry::createDefault ())
 {
   loadSnapshots ();
-
-  m_refreshTimer.setInterval (kRefreshIntervalMs);
-  connect (&m_refreshTimer, &QTimer::timeout, this,
-           &CodingPlanModel::refreshAll);
-  m_refreshTimer.start ();
 
   m_debounceTimer.setInterval (500);
   m_debounceTimer.setSingleShot (true);

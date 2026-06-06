@@ -61,9 +61,12 @@ private slots:
   void protocolProviderIdConsistency ();
   void modelMigratesWebviewSnapshots ();
   void refreshAllSendsAllProviderIds ();
+  void modelDoesNotAutoRefreshFromTaskbarTimer ();
+  void panelQmlDoesNotLoopBackgroundRefreshIntoRefreshAll ();
   void refreshProviderUsesExtensionWhenConnected ();
   void extensionSendStatusUsesEnabledPlans ();
   void extensionSendStatusOnPlansChange ();
+  void extensionDoesNotRefreshAllOnServiceWorkerStartup ();
   void modelFiltersByExtensionEnabledPlans ();
   void modelKeepsProviderFilterWhenExtensionDisconnects ();
   void modelHasSubscriptionsRespectsFilter ();
@@ -910,6 +913,30 @@ ProviderRegistryTest::refreshAllSendsAllProviderIds ()
 }
 
 void
+ProviderRegistryTest::modelDoesNotAutoRefreshFromTaskbarTimer ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  QVERIFY (!content.contains (QStringLiteral ("kRefreshIntervalMs")));
+  QVERIFY (!content.contains (QStringLiteral ("m_refreshTimer.setInterval")));
+  QVERIFY (!content.contains (QStringLiteral ("m_refreshTimer.start")));
+  QVERIFY (!content.contains (QStringLiteral ("&QTimer::timeout, this,\n           &CodingPlanModel::refreshAll")));
+}
+
+void
+ProviderRegistryTest::panelQmlDoesNotLoopBackgroundRefreshIntoRefreshAll ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  QVERIFY (!content.contains (QStringLiteral ("onBackgroundRefreshRequested")));
+}
+
+void
 ProviderRegistryTest::refreshProviderUsesExtensionWhenConnected ()
 {
   QFile file (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"));
@@ -947,6 +974,34 @@ ProviderRegistryTest::extensionSendStatusOnPlansChange ()
   QVERIFY (content.contains (QStringLiteral ("PLANS_STORAGE_KEY")));
   QVERIFY (content.contains (QStringLiteral ("plans changed, resending status")));
   QVERIFY (content.contains (QStringLiteral ("sendStatus().catch")));
+}
+
+void
+ProviderRegistryTest::extensionDoesNotRefreshAllOnServiceWorkerStartup ()
+{
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+
+  const QString content = QString::fromUtf8 (file.readAll ());
+  const qsizetype startupStart = content.indexOf (
+      QStringLiteral ("log(\"service worker starting, initial connect\")"));
+  QVERIFY2 (startupStart >= 0, "service worker startup block not found");
+
+  const QString startupBlock = content.mid (startupStart);
+  QVERIFY (startupBlock.contains (QStringLiteral ("connect();")));
+  QVERIFY (!startupBlock.contains (QStringLiteral ("enqueueRefreshAll();")));
+
+  const qsizetype alarmStart = content.indexOf (
+      QStringLiteral ("if (alarm.name === AUTO_REFRESH_ALARM)"));
+  QVERIFY2 (alarmStart >= 0, "auto-refresh alarm handler not found");
+  const QString alarmBlock = content.mid (alarmStart, 240);
+  QVERIFY (alarmBlock.contains (QStringLiteral ("enqueueRefreshAll();")));
+
+  const qsizetype manualStart = content.indexOf (
+      QStringLiteral ("message.action === \"manual-refresh\""));
+  QVERIFY2 (manualStart >= 0, "manual-refresh handler not found");
+  const QString manualBlock = content.mid (manualStart, 420);
+  QVERIFY (manualBlock.contains (QStringLiteral ("enqueueRefreshAll();")));
 }
 
 void

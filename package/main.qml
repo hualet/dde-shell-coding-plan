@@ -111,13 +111,6 @@ AppletItem {
         toolTipY: DockPanelPositioner.y
     }
 
-    Connections {
-        target: Applet.quota
-        function onBackgroundRefreshRequested() {
-            root.refreshAll()
-        }
-    }
-
     HoverHandler {
         onHoveredChanged: {
             if (hovered && !popup.popupVisible && toolTip.text.length > 0) {

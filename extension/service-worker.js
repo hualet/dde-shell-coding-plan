@@ -676,5 +676,3 @@ scheduleAutoRefresh();
 
 log("service worker starting, initial connect");
 connect();
-
-enqueueRefreshAll();

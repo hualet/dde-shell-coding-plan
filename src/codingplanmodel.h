@@ -72,7 +72,6 @@ private:
 
   ProviderRegistry m_registry;
   QList<QuotaSnapshot> m_snapshots;
-  QTimer m_refreshTimer;
   QFileSystemWatcher *m_settingsWatcher = nullptr;
   QTimer m_debounceTimer;
   WebSocketServer *m_wsServer = nullptr;
