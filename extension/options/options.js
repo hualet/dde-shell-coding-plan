@@ -2,6 +2,7 @@ import {
   TOKEN_STORAGE_KEY,
   STATUS_STORAGE_KEY,
 } from "../shared/ws-protocol.js";
+import { STATUS_LABELS_OPTIONS } from "../shared/ui-labels.js";
 import {
   DEFAULT_PROVIDERS,
   getEnabledPlans,
@@ -31,16 +32,7 @@ const saveIntervalBtn = document.getElementById("saveIntervalBtn");
 const resetIntervalBtn = document.getElementById("resetIntervalBtn");
 const intervalStatus = document.getElementById("intervalStatus");
 
-const STATUS_LABELS = {
-  disconnected: "未连接",
-  connecting: "正在连接...",
-  authenticating: "正在认证...",
-  connected: "已连接",
-  auth_failed: "认证失败（Token 不匹配）",
-  error: "连接失败",
-  timeout: "连接超时",
-  no_token: "请输入 Token",
-};
+const STATUS_LABELS = STATUS_LABELS_OPTIONS;
 
 let toastTimer = null;
 

@@ -1,5 +1,5 @@
 export { codexProvider } from "./codex.js";
-export { kimiCodeProvider } from "./kimi-code.js";
+export { kimiCodeProvider, detailToQuota } from "./kimi-code.js";
 export { glmCodingProvider } from "./glm-coding.js";
 export { minimaxProvider } from "./minimax.js";
 
@@ -14,6 +14,15 @@ export const ALL_PROVIDERS = [
   glmCodingProvider,
   minimaxProvider,
 ];
+
+export const PROVIDER_DEFAULTS = ALL_PROVIDERS.map((p) => ({
+  id: p.id,
+  name: p.name,
+  quotaUrl: p.quotaUrl,
+  consoleUrl: p.consoleUrl,
+  loginUrl: p.loginUrl,
+  allowedOrigin: p.allowedOrigin,
+}));
 
 export function buildProviderMap() {
   const map = {};

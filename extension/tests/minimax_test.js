@@ -1,25 +1,5 @@
 import { minimaxProvider } from "../providers/minimax.js";
-
-let passed = 0;
-let failed = 0;
-
-function assert(condition, message) {
-  if (!condition) {
-    console.error("FAIL: " + message);
-    failed++;
-  } else {
-    passed++;
-  }
-}
-
-function assertEqual(actual, expected, message) {
-  if (actual !== expected) {
-    console.error("FAIL: " + message + " — expected " + JSON.stringify(expected) + " got " + JSON.stringify(actual));
-    failed++;
-  } else {
-    passed++;
-  }
-}
+import { assert, assertEqual, printSummary } from "./test-helpers.js";
 
 const { normalizeSnapshot } = minimaxProvider;
 
@@ -118,7 +98,4 @@ const { normalizeSnapshot } = minimaxProvider;
   assertEqual(r.message, "请登录", "custom error message");
 }
 
-console.log(`\nminimax normalizeSnapshot tests: ${passed} passed, ${failed} failed`);
-if (failed > 0) {
-  process.exit(1);
-}
+printSummary("minimax normalizeSnapshot tests");

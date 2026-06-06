@@ -2,40 +2,10 @@ export const PLANS_STORAGE_KEY = "dde-coding-plan-plans";
 export const QUOTA_CACHE_KEY = "dde-coding-plan-quota-cache";
 export const REFRESH_STATE_KEY = "dde-coding-plan-refresh-state";
 
-export const DEFAULT_PROVIDERS = [
-  {
-    id: "codex",
-    name: "Codex / ChatGPT",
-    quotaUrl: "https://chatgpt.com/codex/cloud/settings/analytics#usage",
-    consoleUrl: "https://chatgpt.com/codex/cloud/settings/analytics#usage",
-    loginUrl: "https://chatgpt.com/auth/login",
-    allowedOrigin: "https://chatgpt.com",
-  },
-  {
-    id: "kimi-code",
-    name: "Kimi Code",
-    quotaUrl: "https://www.kimi.com/code/console",
-    consoleUrl: "https://www.kimi.com/code/console",
-    loginUrl: "https://www.kimi.com/code/",
-    allowedOrigin: "https://www.kimi.com",
-  },
-  {
-    id: "glm-coding",
-    name: "GLM Coding",
-    quotaUrl: "https://bigmodel.cn/coding-plan/personal/usage",
-    consoleUrl: "https://bigmodel.cn/coding-plan/personal/usage",
-    loginUrl: "https://bigmodel.cn/",
-    allowedOrigin: "https://bigmodel.cn",
-  },
-  {
-    id: "minimax",
-    name: "MiniMax Coding",
-    quotaUrl: "https://platform.minimaxi.com/user-center/billing",
-    consoleUrl: "https://platform.minimaxi.com/user-center/billing",
-    loginUrl: "https://platform.minimaxi.com/",
-    allowedOrigin: "https://platform.minimaxi.com",
-  },
-];
+import { PROVIDER_DEFAULTS } from "../providers/index.js";
+
+const DEFAULT_PROVIDERS = PROVIDER_DEFAULTS;
+export { DEFAULT_PROVIDERS };
 
 export async function getEnabledPlans() {
   const result = await chrome.storage.local.get(PLANS_STORAGE_KEY);

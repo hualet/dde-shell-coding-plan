@@ -1,23 +1,4 @@
-let passed = 0;
-let failed = 0;
-
-function assert(condition, message) {
-  if (!condition) {
-    console.error("FAIL: " + message);
-    failed++;
-  } else {
-    passed++;
-  }
-}
-
-function assertEqual(actual, expected, message) {
-  if (actual !== expected) {
-    console.error("FAIL: " + message + " — expected " + JSON.stringify(expected) + " got " + JSON.stringify(actual));
-    failed++;
-  } else {
-    passed++;
-  }
-}
+import { assert, assertEqual, printSummary } from "./test-helpers.js";
 
 const storageState = {};
 
@@ -184,12 +165,4 @@ assertEqual(REFRESH_INTERVAL_MAX, 120, "REFRESH_INTERVAL_MAX is 120");
 assert(REFRESH_INTERVAL_MIN <= REFRESH_INTERVAL_DEFAULT, "MIN <= DEFAULT");
 assert(REFRESH_INTERVAL_DEFAULT < REFRESH_INTERVAL_MAX, "DEFAULT < MAX");
 
-console.log("\n=== Refresh Interval Test Results ===");
-console.log("Passed: " + passed);
-console.log("Failed: " + failed);
-if (failed > 0) {
-  console.error("\nSOME TESTS FAILED");
-  process.exit(1);
-} else {
-  console.log("\nALL TESTS PASSED");
-}
+printSummary("=== Refresh Interval Test Results ===");

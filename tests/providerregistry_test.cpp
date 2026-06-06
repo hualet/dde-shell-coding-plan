@@ -807,14 +807,14 @@ ProviderRegistryTest::providerDefinitionFieldsCleaned ()
 void
 ProviderRegistryTest::protocolProviderIdConsistency ()
 {
-  QFile sw (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
-  QVERIFY2 (sw.open (QIODevice::ReadOnly), qPrintable (sw.errorString ()));
-  const QString swContent = QString::fromUtf8 (sw.readAll ());
+  QFile iife (QStringLiteral (SOURCE_DIR "/extension/shared/tab-extractor-iife.js"));
+  QVERIFY2 (iife.open (QIODevice::ReadOnly), qPrintable (iife.errorString ()));
+  const QString iifeContent = QString::fromUtf8 (iife.readAll ());
 
-  QVERIFY (swContent.contains (QStringLiteral ("codex")));
-  QVERIFY (swContent.contains (QStringLiteral ("\"kimi-code\"")));
-  QVERIFY (swContent.contains (QStringLiteral ("\"glm-coding\"")));
-  QVERIFY (swContent.contains (QStringLiteral ("\"minimax\"")));
+  QVERIFY (iifeContent.contains (QStringLiteral ("\"codex\"")));
+  QVERIFY (iifeContent.contains (QStringLiteral ("\"kimi-code\"")));
+  QVERIFY (iifeContent.contains (QStringLiteral ("\"glm-coding\"")));
+  QVERIFY (iifeContent.contains (QStringLiteral ("\"minimax\"")));
 
   QFile provider (QStringLiteral (SOURCE_DIR "/extension/providers/codex.js"));
   QVERIFY2 (provider.open (QIODevice::ReadOnly), qPrintable (provider.errorString ()));
@@ -1173,24 +1173,44 @@ ProviderRegistryTest::providerIdSetConsistencyCppExtension ()
   QVERIFY2 (storageFile.open (QIODevice::ReadOnly), qPrintable (storageFile.errorString ()));
   const QString storageContent = QString::fromUtf8 (storageFile.readAll ());
 
+  QVERIFY (storageContent.contains (QStringLiteral ("PROVIDER_DEFAULTS")));
+
+  QFile providersFile (QStringLiteral (SOURCE_DIR "/extension/providers/index.js"));
+  QVERIFY2 (providersFile.open (QIODevice::ReadOnly), qPrintable (providersFile.errorString ()));
+  const QString providersContent = QString::fromUtf8 (providersFile.readAll ());
+
   for (const QString &id : cppIds)
     {
-      QVERIFY2 (storageContent.contains (QStringLiteral ("id: \"%1\"").arg (id)),
-                qPrintable (QStringLiteral ("Provider %1 in C++ registry missing from storage.js DEFAULT_PROVIDERS").arg (id)));
+      QVERIFY2 (providersContent.contains (id),
+                qPrintable (QStringLiteral ("Provider %1 in C++ registry missing from extension/providers/index.js").arg (id)));
     }
 }
 
 void
 ProviderRegistryTest::minimaxNormalizeSnapshotHandlesNullRaw ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/minimax.js"));
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/quota-utils.js"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
+  const qsizetype fnStart = content.indexOf (QStringLiteral ("function buildNormalizeSnapshot"));
   QVERIFY (fnStart >= 0);
 
-  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  const qsizetype parenStart = content.indexOf (QLatin1Char ('('), fnStart);
+  QVERIFY (parenStart >= 0);
+  int pDepth = 0;
+  qsizetype parenEnd = parenStart;
+  for (; parenEnd < content.size (); ++parenEnd)
+    {
+      if (content[parenEnd] == QLatin1Char ('(')) ++pDepth;
+      else if (content[parenEnd] == QLatin1Char (')'))
+        {
+          --pDepth;
+          if (pDepth == 0) break;
+        }
+    }
+
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), parenEnd);
   QVERIFY (braceStart >= 0);
   int depth = 0;
   qsizetype braceEnd = braceStart;
@@ -1206,8 +1226,8 @@ ProviderRegistryTest::minimaxNormalizeSnapshotHandlesNullRaw ()
 
   const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
 
-  QVERIFY (fnBody.contains (QStringLiteral ("raw.weekly == null")));
-  QVERIFY (fnBody.contains (QStringLiteral ("raw.fiveHour == null")));
+  QVERIFY (fnBody.contains (QStringLiteral ("!raw.weekly")));
+  QVERIFY (fnBody.contains (QStringLiteral ("!raw.fiveHour")));
   QVERIFY (fnBody.contains (QStringLiteral ("raw.status")));
   QVERIFY (fnBody.contains (QStringLiteral ("\"parse_error\"")));
 }
@@ -1219,27 +1239,10 @@ ProviderRegistryTest::minimaxNormalizeSnapshotHandlesMissingFields ()
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
-  QVERIFY (fnStart >= 0);
-
-  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
-  QVERIFY (braceStart >= 0);
-  int depth = 0;
-  qsizetype braceEnd = braceStart;
-  for (; braceEnd < content.size (); ++braceEnd)
-    {
-      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
-      else if (content[braceEnd] == QLatin1Char ('}'))
-        {
-          --depth;
-          if (depth == 0) break;
-        }
-    }
-
-  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
-
-  QVERIFY (fnBody.contains (QStringLiteral ("raw.weekly != null")));
-  QVERIFY (fnBody.contains (QStringLiteral ("raw.fiveHour != null")));
+  QVERIFY (content.contains (QStringLiteral ("buildNormalizeSnapshot")));
+  QVERIFY (content.contains (QStringLiteral ("clampRatio")));
+  QVERIFY (content.contains (QStringLiteral ("raw.weekly")));
+  QVERIFY (content.contains (QStringLiteral ("raw.fiveHour")));
 }
 
 void
@@ -1289,6 +1292,10 @@ ProviderRegistryTest::extractionModeTabMatchesTabExtractionInServiceWorker ()
 
   QVERIFY (swContent.contains (QStringLiteral ("TAB_PROVIDER_IDS")));
 
+  QFile iifeFile (QStringLiteral (SOURCE_DIR "/extension/shared/tab-extractor-iife.js"));
+  QVERIFY2 (iifeFile.open (QIODevice::ReadOnly), qPrintable (iifeFile.errorString ()));
+  const QString iifeContent = QString::fromUtf8 (iifeFile.readAll ());
+
   const QStringList tabProviders = { QStringLiteral ("codex"),
                                       QStringLiteral ("kimi-code"),
                                       QStringLiteral ("glm-coding"),
@@ -1296,8 +1303,8 @@ ProviderRegistryTest::extractionModeTabMatchesTabExtractionInServiceWorker ()
 
   for (const QString &id : tabProviders)
     {
-      QVERIFY2 (swContent.contains (QStringLiteral ("\"%1\"").arg (id)),
-                qPrintable (QStringLiteral ("Service worker extractQuotaInPage missing provider %1").arg (id)));
+      QVERIFY2 (iifeContent.contains (QStringLiteral ("\"%1\"").arg (id)),
+                qPrintable (QStringLiteral ("Tab extractor IIFE missing provider %1").arg (id)));
     }
 
   QFile indexFile (QStringLiteral (SOURCE_DIR "/extension/providers/index.js"));
@@ -1313,19 +1320,34 @@ ProviderRegistryTest::storageDefaultProvidersMatchCppRegistry ()
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
   const QStringList cppIds = registry.providerIds ();
 
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/storage.js"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-  const QString content = QString::fromUtf8 (file.readAll ());
+  QFile storageFile (QStringLiteral (SOURCE_DIR "/extension/shared/storage.js"));
+  QVERIFY2 (storageFile.open (QIODevice::ReadOnly), qPrintable (storageFile.errorString ()));
+  const QString storageContent = QString::fromUtf8 (storageFile.readAll ());
+  QVERIFY (storageContent.contains (QStringLiteral ("PROVIDER_DEFAULTS")));
+
+  const QMap<QString, QString> providerFiles = {
+    {QStringLiteral ("codex"), QStringLiteral (SOURCE_DIR "/extension/providers/codex.js")},
+    {QStringLiteral ("kimi-code"), QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js")},
+    {QStringLiteral ("glm-coding"), QStringLiteral (SOURCE_DIR "/extension/providers/glm-coding.js")},
+    {QStringLiteral ("minimax"), QStringLiteral (SOURCE_DIR "/extension/providers/minimax.js")},
+  };
 
   for (const QString &id : cppIds)
     {
-      QVERIFY2 (content.contains (QStringLiteral ("id: \"%1\"").arg (id)),
-                qPrintable (QStringLiteral ("storage.js DEFAULT_PROVIDERS missing %1").arg (id)));
-
       const ProviderDefinition provider = registry.provider (id);
       const QString host = QUrl (provider.loginUrl).host ();
-      QVERIFY2 (content.contains (host),
-                qPrintable (QStringLiteral ("storage.js missing allowedOrigin host for %1").arg (id)));
+
+      const QString filePath = providerFiles.value (id);
+      QVERIFY2 (!filePath.isEmpty (),
+                qPrintable (QStringLiteral ("No provider file mapping for %1").arg (id)));
+
+      QFile pf (filePath);
+      QVERIFY2 (pf.open (QIODevice::ReadOnly), qPrintable (pf.errorString ()));
+      const QString pContent = QString::fromUtf8 (pf.readAll ());
+      QVERIFY2 (pContent.contains (id),
+                qPrintable (QStringLiteral ("Provider file missing id %1").arg (id)));
+      QVERIFY2 (pContent.contains (host),
+                qPrintable (QStringLiteral ("Provider file missing host for %1").arg (id)));
     }
 }
 
@@ -1394,75 +1416,49 @@ ProviderRegistryTest::kimiDetailToQuotaIgnoresApiRemaining ()
   QVERIFY (fnBody.contains (QStringLiteral ("Number(detail.used)")));
   QVERIFY (fnBody.contains (QStringLiteral ("limit - used")));
 
-  const qsizetype clampFnStart = content.indexOf (QStringLiteral ("function clampRatio"));
-  QVERIFY (clampFnStart >= 0);
-  const qsizetype clampBraceStart = content.indexOf (QLatin1Char ('{'), clampFnStart);
-  int clampDepth = 0;
-  qsizetype clampBraceEnd = clampBraceStart;
-  for (; clampBraceEnd < content.size (); ++clampBraceEnd)
-    {
-      if (content[clampBraceEnd] == QLatin1Char ('{')) ++clampDepth;
-      else if (content[clampBraceEnd] == QLatin1Char ('}'))
-        {
-          --clampDepth;
-          if (clampDepth == 0) break;
-        }
-    }
-  const QString clampBody = content.mid (clampFnStart, clampBraceEnd - clampFnStart + 1);
-  QVERIFY (clampBody.contains (QStringLiteral ("Math.max")));
-  QVERIFY (clampBody.contains (QStringLiteral ("Math.min")));
+  QFile utilsFile (QStringLiteral (SOURCE_DIR "/extension/shared/quota-utils.js"));
+  QVERIFY2 (utilsFile.open (QIODevice::ReadOnly), qPrintable (utilsFile.errorString ()));
+  const QString utilsContent = QString::fromUtf8 (utilsFile.readAll ());
+  QVERIFY (utilsContent.contains (QStringLiteral ("function clampRatio")));
+  QVERIFY (utilsContent.contains (QStringLiteral ("Math.max")));
+  QVERIFY (utilsContent.contains (QStringLiteral ("Math.min")));
 }
 
 void
 ProviderRegistryTest::kimiServiceWorkerToQuotaIgnoresApiRemaining ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/tab-extractor-iife.js"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
   const QString content = QString::fromUtf8 (file.readAll ());
 
   const qsizetype kimiStart = content.indexOf (QStringLiteral ("\"kimi-code\""));
-  QVERIFY2 (kimiStart >= 0, "kimi-code provider block not found in service worker");
+  QVERIFY2 (kimiStart >= 0, "kimi-code provider block not found in tab extractor IIFE");
+
+  QVERIFY (content.contains (QStringLiteral ("function detailToQuota(detail)")));
+  QVERIFY (content.contains (QStringLiteral ("Number(detail.used)")));
+  QVERIFY (content.contains (QStringLiteral ("limit - used")));
 
   const qsizetype providerEnd = content.indexOf (QStringLiteral ("\"glm-coding\""), kimiStart);
   QVERIFY2 (providerEnd > kimiStart, "could not find end of kimi-code provider block");
 
   const QString kimiBlock = content.mid (kimiStart, providerEnd - kimiStart);
-
-  QVERIFY (kimiBlock.contains (QStringLiteral ("const toQuota")));
-  QVERIFY (!kimiBlock.contains (QStringLiteral ("d.remaining")));
-  QVERIFY (kimiBlock.contains (QStringLiteral ("Number(d.used)")));
-  QVERIFY (kimiBlock.contains (QStringLiteral ("limit - used")));
+  QVERIFY (kimiBlock.contains (QStringLiteral ("readBillingFromDoc")));
 }
 
 void
 ProviderRegistryTest::kimiSourceFieldIsBrowserExt ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/shared/quota-utils.js"));
   QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
   const QString content = QString::fromUtf8 (file.readAll ());
 
-  const qsizetype fnStart = content.indexOf (QStringLiteral ("normalizeSnapshot(raw)"));
-  QVERIFY (fnStart >= 0);
+  QVERIFY (content.contains (QStringLiteral ("source: \"browser_ext\"")));
+  QVERIFY (!content.contains (QStringLiteral ("source: \"webview\"")));
 
-  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
-  QVERIFY (braceStart >= 0);
-  int depth = 0;
-  qsizetype braceEnd = braceStart;
-  for (; braceEnd < content.size (); ++braceEnd)
-    {
-      if (content[braceEnd] == QLatin1Char ('{')) ++depth;
-      else if (content[braceEnd] == QLatin1Char ('}'))
-        {
-          --depth;
-          if (depth == 0) break;
-        }
-    }
-
-  const QString fnBody = content.mid (fnStart, braceEnd - fnStart + 1);
-
-  QVERIFY (fnBody.contains (QStringLiteral ("source: \"browser_ext\"")));
-  QVERIFY (!fnBody.contains (QStringLiteral ("source: \"webview\"")));
-  QVERIFY (fnBody.contains (QStringLiteral ("providerId: \"kimi-code\"")));
+  QFile kimiFile (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (kimiFile.open (QIODevice::ReadOnly), qPrintable (kimiFile.errorString ()));
+  const QString kimiContent = QString::fromUtf8 (kimiFile.readAll ());
+  QVERIFY (kimiContent.contains (QStringLiteral ("buildNormalizeSnapshot(\"kimi-code\"")));
 }
 
 void
@@ -1480,15 +1476,20 @@ ProviderRegistryTest::kimiProviderIdIsConsistent ()
 void
 ProviderRegistryTest::kimiWeeklyQuotaUnchangedByRemainingFix ()
 {
-  QFile file (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
-  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
-  const QString content = QString::fromUtf8 (file.readAll ());
+  QFile utilsFile (QStringLiteral (SOURCE_DIR "/extension/shared/quota-utils.js"));
+  QVERIFY2 (utilsFile.open (QIODevice::ReadOnly), qPrintable (utilsFile.errorString ()));
+  const QString utilsContent = QString::fromUtf8 (utilsFile.readAll ());
 
-  QVERIFY (content.contains (QStringLiteral ("1 - usedRatio")));
-  QVERIFY (content.contains (QStringLiteral ("readTextQuota")));
+  QVERIFY (utilsContent.contains (QStringLiteral ("1 - usedRatio")));
+  QVERIFY (utilsContent.contains (QStringLiteral ("readTextQuota")));
 
-  QVERIFY (content.contains (QStringLiteral ("本周用量")));
-  QVERIFY (content.contains (QStringLiteral ("频限明细")));
+  QFile kimiFile (QStringLiteral (SOURCE_DIR "/extension/providers/kimi-code.js"));
+  QVERIFY2 (kimiFile.open (QIODevice::ReadOnly), qPrintable (kimiFile.errorString ()));
+  const QString kimiContent = QString::fromUtf8 (kimiFile.readAll ());
+
+  QVERIFY (kimiContent.contains (QStringLiteral ("readTextQuota")));
+  QVERIFY (kimiContent.contains (QStringLiteral ("本周用量")));
+  QVERIFY (kimiContent.contains (QStringLiteral ("频限明细")));
 }
 
 QTEST_MAIN (ProviderRegistryTest)

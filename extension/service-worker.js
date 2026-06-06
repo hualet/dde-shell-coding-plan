@@ -429,9 +429,14 @@ function extractViaTab(provider, timeout) {
           }
 
           try {
+            await chrome.scripting.executeScript({
+              target: { tabId },
+              files: ["shared/tab-extractor-iife.js"],
+            });
+
             const results = await chrome.scripting.executeScript({
               target: { tabId },
-              func: extractQuotaInPage,
+              func: callExtractQuotaInPage,
               args: [provider.id],
             });
 
@@ -452,7 +457,7 @@ function extractViaTab(provider, timeout) {
 
                 const retryResults = await chrome.scripting.executeScript({
                   target: { tabId },
-                  func: extractQuotaInPage,
+                  func: callExtractQuotaInPage,
                   args: [provider.id],
                 });
 
@@ -490,246 +495,8 @@ function extractViaTab(provider, timeout) {
   });
 }
 
-function extractQuotaInPage(providerId) {
-  const clamp = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1);
-  const pct = (v) => (v >= 0 ? Math.round(v * 100) + "%" : "");
-
-  const PROVIDERS = {
-    codex: {
-      providerId: "codex",
-      providerName: "Codex / ChatGPT",
-      extract(doc) {
-        const text = (doc.body ? doc.body.innerText : "") || "";
-        const normalized = text.replace(/\u00a0/g, " ").replace(/％/g, "%").replace(/[ \t]+/g, " ").trim();
-        if (normalized.indexOf("Codex") < 0 && !doc.location?.pathname?.includes("/codex/cloud/settings/analytics")) {
-          return null;
-        }
-        const lines = normalized.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
-        let fiveHour = null;
-        let weekly = null;
-        for (let i = 0; i < lines.length; ++i) {
-          if (/5\s*(?:小时|hour).*(?:使用|限额|限制|额度|usage|limit)/i.test(lines[i])) {
-            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
-              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
-              if (m) { fiveHour = Number(m[1]) / 100; break; }
-            }
-            if (fiveHour == null) {
-              const sec = lines.slice(i, i + 8).join("\n");
-              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
-              if (pm) fiveHour = Number(pm[1]) / 100;
-            }
-          }
-          if (/(?:每周|周).*(?:使用|限额|限制|额度)/i.test(lines[i]) || /weekly.*(?:usage|limit)/i.test(lines[i])) {
-            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
-              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
-              if (m) { weekly = Number(m[1]) / 100; break; }
-            }
-            if (weekly == null) {
-              const sec = lines.slice(i, i + 8).join("\n");
-              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
-              if (pm) weekly = Number(pm[1]) / 100;
-            }
-          }
-        }
-        if (fiveHour == null && weekly == null) {
-          const compact = normalized.replace(/\s+/g, "");
-          if (compact.indexOf("5小时") >= 0) {
-            const slice = compact.slice(compact.indexOf("5小时"), compact.indexOf("5小时") + 240);
-            const pm = slice.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
-            if (pm) fiveHour = Number(pm[1]) / 100;
-          }
-        }
-        return { fiveHour, weekly };
-      }
-    },
-    "kimi-code": {
-      providerId: "kimi-code",
-      providerName: "Kimi Code",
-      extract(doc) {
-        const token = localStorage.getItem("access_token");
-        if (!token) return null;
-
-        try {
-          const request = new XMLHttpRequest();
-          request.open("POST", "/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages", false);
-          request.setRequestHeader("content-type", "application/json");
-          request.setRequestHeader("authorization", "Bearer " + token);
-          request.setRequestHeader("x-msh-platform", "web");
-          request.setRequestHeader("x-msh-version", "1.0.0");
-          request.setRequestHeader("x-language", "zh-CN");
-          request.send(JSON.stringify({ scope: ["FEATURE_CODING"] }));
-
-          if (request.status < 200 || request.status >= 300) return null;
-
-          const payload = JSON.parse(request.responseText);
-          const usages = Array.isArray(payload.usages) ? payload.usages : [];
-          const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
-          if (!usage) return { debug: { rawPayload: payload, reason: "no FEATURE_CODING usage" }, weekly: null, fiveHour: null };
-
-          const clampRatio = (v) => Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : -1;
-          const pctText = (v) => v >= 0 ? Math.round(v * 100) + "%" : "";
-          const toQuota = (d) => {
-            if (!d) return null;
-            if (d.used === "" || d.used == null) return null;
-            const used = Number(d.used);
-            if (!Number.isFinite(used) || used < 0) return null;
-            if (used === 0) {
-              const zeroLimit = Number(d.limit);
-              return {
-                ratio: 1,
-                text: "100%",
-                used: 0,
-                total: Number.isFinite(zeroLimit) && zeroLimit > 0 ? zeroLimit : 0,
-                resetAt: d.resetTime || "",
-              };
-            }
-            const limit = Number(d.limit);
-            if (!Number.isFinite(limit) || limit <= 0) return null;
-            const remaining = limit - used;
-            const ratio = clampRatio(remaining / limit);
-            return { ratio, text: pctText(ratio), used, total: limit, resetAt: d.resetTime || "" };
-          };
-
-          const weekly = toQuota(usage.detail);
-          const fiveHour = toQuota(
-            Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
-          );
-
-          const debug = {
-            weeklyDetail: usage.detail,
-            fiveHourDetail: Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null,
-            weeklyResult: weekly,
-            fiveHourResult: fiveHour,
-          };
-
-          if (!weekly && !fiveHour) return { debug, weekly: null, fiveHour: null };
-          return {
-            debug,
-            weekly: weekly != null ? weekly.ratio : null,
-            fiveHour: fiveHour != null ? fiveHour.ratio : null,
-          };
-        } catch {
-          return null;
-        }
-      }
-    },
-    "glm-coding": {
-      providerId: "glm-coding",
-      providerName: "GLM Coding",
-      extract(doc) {
-        const cookiePrefix = "bigmodel_token_production=";
-        const parts = document.cookie.split(";");
-        let token = "";
-        for (const part of parts) {
-          const trimmed = part.trim();
-          if (trimmed.indexOf(cookiePrefix) === 0) {
-            token = decodeURIComponent(trimmed.slice(cookiePrefix.length));
-            break;
-          }
-        }
-        if (!token) return null;
-
-        try {
-          const request = new XMLHttpRequest();
-          request.open("GET", "/api/monitor/usage/quota/limit", false);
-          request.setRequestHeader("Authorization", token);
-          request.send();
-
-          if (request.status < 200 || request.status >= 300) return null;
-
-          const payload = JSON.parse(request.responseText);
-          const limits = payload?.data?.limits || [];
-          const fiveHourLimit = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 3);
-          const weeklyLimit = limits.find((item) => item && item.type === "TOKENS_LIMIT" && item.unit === 6);
-
-          const toRatio = (limit) => {
-            if (!limit) return null;
-            const usedRatio = Number(limit.percentage) / 100;
-            if (!Number.isFinite(usedRatio)) return null;
-            return Math.max(0, Math.min(1, 1 - usedRatio));
-          };
-
-          const weekly = toRatio(weeklyLimit);
-          const fiveHour = toRatio(fiveHourLimit);
-          if (weekly == null && fiveHour == null) return null;
-          return { weekly, fiveHour };
-        } catch {
-          return null;
-        }
-      }
-    },
-    "minimax": {
-      providerId: "minimax",
-      providerName: "MiniMax Coding",
-      extract(doc) {
-        const text = (doc.body ? doc.body.innerText : "") || "";
-        const normalized = text.replace(/\u00a0/g, " ").replace(/％/g, "%").replace(/[ \t]+/g, " ").trim();
-        if (normalized.indexOf("MiniMax") < 0 && !doc.location?.hostname?.includes("minimaxi.com")) {
-          return null;
-        }
-        const lines = normalized.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
-        let fiveHour = null;
-        let weekly = null;
-        for (let i = 0; i < lines.length; ++i) {
-          if (/5\s*(?:小时|hour).*(?:使用|限额|限制|额度|usage|limit)/i.test(lines[i])) {
-            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
-              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
-              if (m) { fiveHour = Number(m[1]) / 100; break; }
-            }
-            if (fiveHour == null) {
-              const sec = lines.slice(i, i + 8).join("\n");
-              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
-              if (pm) fiveHour = Number(pm[1]) / 100;
-            }
-          }
-          if (/(?:每周|周).*(?:使用|限额|限制|额度)/i.test(lines[i]) || /weekly.*(?:usage|limit)/i.test(lines[i])) {
-            for (let o = 1; o <= 6 && i + o < lines.length; ++o) {
-              const m = lines[i + o].match(/^(\d{1,3}(?:\.\d+)?)\s*(?:%|％)$/);
-              if (m) { weekly = Number(m[1]) / 100; break; }
-            }
-            if (weekly == null) {
-              const sec = lines.slice(i, i + 8).join("\n");
-              const pm = sec.match(/(\d{1,3}(?:\.\d+)?)\s*%/);
-              if (pm) weekly = Number(pm[1]) / 100;
-            }
-          }
-        }
-        if (fiveHour == null && weekly == null) return null;
-        return { fiveHour, weekly };
-      }
-    }
-  };
-
-  const provider = PROVIDERS[providerId];
-  if (!provider) return { success: false, error: "Unknown provider in tab" };
-
-  const parsed = provider.extract(document);
-  if (!parsed || (parsed.fiveHour == null && parsed.weekly == null)) {
-    const text = (document.body ? document.body.innerText : "").toLowerCase();
-    const isLogin = text.includes("log in") || text.includes("sign in") || text.includes("登录") || text.includes("login");
-    if (isLogin) {
-      return { success: false, error: "auth_error:未登录 " + provider.providerName + "，请先在浏览器中登录" };
-    }
-    return { success: false, needsRetry: true, error: "Could not find " + provider.providerName + " quota info on rendered page", debug: parsed?.debug };
-  }
-
-  return {
-    success: true,
-    data: {
-      providerId: provider.providerId,
-      providerName: provider.providerName,
-      source: "browser_ext",
-      status: "ok",
-      weeklyRemainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : -1,
-      weeklyBalanceText: parsed.weekly != null ? pct(clamp(parsed.weekly)) : "",
-      fiveHourRemainingRatio: parsed.fiveHour != null ? clamp(parsed.fiveHour) : -1,
-      fiveHourBalanceText: parsed.fiveHour != null ? pct(clamp(parsed.fiveHour)) : "",
-      remainingRatio: parsed.weekly != null ? clamp(parsed.weekly) : (parsed.fiveHour != null ? clamp(parsed.fiveHour) : -1),
-      balanceText: parsed.weekly != null ? pct(clamp(parsed.weekly)) : (parsed.fiveHour != null ? pct(clamp(parsed.fiveHour)) : ""),
-      updatedAt: new Date().toISOString(),
-      _debug: parsed.debug || undefined,
-    }
-  };
+function callExtractQuotaInPage(providerId) {
+  return window.__ddeExtractQuotaInPage(providerId);
 }
 
 function extractViaOffscreen(provider, timeout) {
