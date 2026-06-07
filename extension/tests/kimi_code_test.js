@@ -255,4 +255,16 @@ const { normalizeSnapshot } = kimiCodeProvider;
   }
 }
 
+// 28. Limits array element without .detail wrapper (API may return used/limit directly)
+{
+  const q = detailToQuota({ used: 10, limit: 50 });
+  assert(q !== null, "limit object without .detail wrapper must return non-null");
+  if (q) {
+    assertEqual(q.ratio, 0.8, "direct limit object => ratio=0.8");
+    assertEqual(q.text, "80%", "direct limit object => text=80%");
+    assertEqual(q.used, 10, "direct limit object => used=10");
+    assertEqual(q.total, 50, "direct limit object => total=50");
+  }
+}
+
 printSummary("kimi-code tests");

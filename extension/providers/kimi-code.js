@@ -27,6 +27,11 @@ export const kimiCodeProvider = {
 
     if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
       parsed = readKimiDomFallback(doc);
+    } else if (parsed && parsed.weekly && !parsed.fiveHour) {
+      const fallback = readKimiDomFallback(doc);
+      if (fallback && fallback.fiveHour) {
+        parsed.fiveHour = fallback.fiveHour;
+      }
     }
 
     if (!parsed || (!parsed.weekly && !parsed.fiveHour)) {
@@ -102,9 +107,10 @@ async function readBillingApi() {
     if (!usage) return null;
 
     const weekly = detailToQuota(usage.detail);
-    const fiveHour = detailToQuota(
-      Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
-    );
+    const fiveHourDetail = Array.isArray(usage.limits) && usage.limits.length > 0
+      ? (usage.limits[0].detail || usage.limits[0])
+      : null;
+    const fiveHour = detailToQuota(fiveHourDetail);
 
     if (!weekly && !fiveHour) return null;
 
@@ -134,11 +140,12 @@ function readBillingFromDoc(doc) {
   const usage = usages.find((item) => item && item.scope === "FEATURE_CODING") || usages[0];
   if (!usage) return null;
 
+  const fiveHourDetail = Array.isArray(usage.limits) && usage.limits.length > 0
+    ? (usage.limits[0].detail || usage.limits[0])
+    : null;
   return {
     weekly: detailToQuota(usage.detail),
-    fiveHour: detailToQuota(
-      Array.isArray(usage.limits) && usage.limits.length > 0 ? usage.limits[0].detail : null
-    ),
+    fiveHour: detailToQuota(fiveHourDetail),
   };
 }
 
