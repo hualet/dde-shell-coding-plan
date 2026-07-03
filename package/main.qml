@@ -25,6 +25,7 @@ AppletItem {
     readonly property color secondaryTextColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.5) : Qt.rgba(0, 0, 0, 0.5)
     readonly property color ringTextColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(0, 0, 0, 0.9)
     readonly property color ringTrackColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
+    readonly property color errorRingColor: "#ef4444"
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
@@ -159,10 +160,7 @@ AppletItem {
                     const center = width / 2
                     const lineWidth = 6
                     const radius = center - lineWidth / 2
-                    const raw = snapshot.fiveHourRemainingRatio
-                    const ratio = (raw !== undefined && raw !== null && raw >= 0)
-                        ? Math.max(0, Math.min(1, raw))
-                        : 0
+                    const isError = snapshot.severity === "error"
 
                     ctx.lineWidth = lineWidth
                     ctx.strokeStyle = root.ringTrackColor
@@ -170,10 +168,21 @@ AppletItem {
                     ctx.arc(center, center, radius, 0, Math.PI * 2)
                     ctx.stroke()
 
-                    ctx.strokeStyle = root.severityColor(root.fiveHourSeverity(snapshot))
-                    ctx.beginPath()
-                    ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
-                    ctx.stroke()
+                    if (isError) {
+                        ctx.strokeStyle = root.errorRingColor
+                        ctx.beginPath()
+                        ctx.arc(center, center, radius, 0, Math.PI * 2)
+                        ctx.stroke()
+                    } else {
+                        const raw = snapshot.fiveHourRemainingRatio
+                        const ratio = (raw !== undefined && raw !== null && raw >= 0)
+                            ? Math.max(0, Math.min(1, raw))
+                            : 0
+                        ctx.strokeStyle = root.severityColor(root.fiveHourSeverity(snapshot))
+                        ctx.beginPath()
+                        ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
+                        ctx.stroke()
+                    }
                 }
 
                 Connections {
