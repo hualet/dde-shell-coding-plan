@@ -17,13 +17,14 @@ AppletItem {
     readonly property int dockSize: Panel.rootObject.dockSize || 48
     readonly property var quotaSnapshots: Applet.quota ? Applet.quota.snapshots : []
     readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
+    readonly property bool isDarkTheme: DTK.themeType === ApplicationHelper.DarkType
 
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
 
-    property Palette secondaryTextColor: Palette {
-        normal: Qt.rgba(0, 0, 0, 0.5)
-        normalDark: Qt.rgba(1, 1, 1, 0.5)
-    }
+    // Plain JS colors (DTK Palette.normal/normalDark are group objects, not colors).
+    readonly property color secondaryTextColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.5) : Qt.rgba(0, 0, 0, 0.5)
+    readonly property color ringTextColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(0, 0, 0, 0.9)
+    readonly property color ringTrackColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
     implicitHeight: dockSize
@@ -164,7 +165,7 @@ AppletItem {
                         : 0
 
                     ctx.lineWidth = lineWidth
-                    ctx.strokeStyle = "rgba(128, 128, 128, 0.24)"
+                    ctx.strokeStyle = root.ringTrackColor
                     ctx.beginPath()
                     ctx.arc(center, center, radius, 0, Math.PI * 2)
                     ctx.stroke()
@@ -182,12 +183,19 @@ AppletItem {
                     }
                 }
 
+                Connections {
+                    target: root
+                    function onIsDarkThemeChanged() {
+                        ring.requestPaint()
+                    }
+                }
+
                 Text {
                     anchors.centerIn: parent
                     text: root.providerInitial(parent.snapshot.providerName)
                     font.pixelSize: Math.max(9, parent.width * 0.35)
                     font.bold: true
-                    color: DockPalette.iconTextPalette.color
+                    color: root.ringTextColor
                 }
             }
         }
@@ -198,7 +206,7 @@ AppletItem {
         visible: root.visibleRingCount === 0
         text: "+"
         font.pixelSize: 20
-        color: DockPalette.iconTextPalette.color
+        color: root.ringTextColor
     }
 
     PanelPopup {
@@ -243,7 +251,7 @@ AppletItem {
                     Label {
                         visible: !Applet.quota || !Applet.quota.extensionConnected
                         text: qsTr("未连接")
-                        color: root.secondaryTextColor.color
+                        color: root.secondaryTextColor
                         font.pixelSize: 12
                     }
                 }
@@ -371,7 +379,7 @@ AppletItem {
                     visible: Applet.quota && !Applet.quota.extensionConnected
                     text: qsTr("请安装浏览器扩展并输入配对 Token 以连接。")
                     wrapMode: Text.WordWrap
-                    color: root.secondaryTextColor.color
+                    color: root.secondaryTextColor
                     font.pixelSize: 12
                 }
             }
