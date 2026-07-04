@@ -271,15 +271,17 @@ async function drainRefreshQueue() {
       }
       log("drainRefreshQueue:", providerId, "data: weeklyRatio=", data.weeklyRemainingRatio, "fiveHourRatio=", data.fiveHourRemainingRatio, "balanceText=", data.weeklyBalanceText, "fiveHourText=", data.fiveHourBalanceText);
 
-      if (wsRequestId) {
-        const { _debug, ...wsData } = data;
-        sendJson({
-          type: MSG_TYPE_REFRESH_RESULT,
-          requestId: wsRequestId,
-          provider: providerId,
-          data: wsData,
-        });
-      }
+      // Always push to the taskbar so self-initiated refreshes (auto-refresh
+      // alarm, popup/options manual refresh, where wsRequestId is null) keep
+      // the taskbar in sync with the extension's own popup cache. sendJson is
+      // a safe no-op when the socket is not open.
+      const { _debug, ...wsData } = data;
+      sendJson({
+        type: MSG_TYPE_REFRESH_RESULT,
+        requestId: wsRequestId,
+        provider: providerId,
+        data: wsData,
+      });
 
       await setQuotaCacheEntry(providerId, data);
       log("drainRefreshQueue: done", providerId, "status:", result.status);
@@ -287,14 +289,12 @@ async function drainRefreshQueue() {
       error("drainRefreshQueue: failed for", providerId, err.message);
       const errData = buildErrorCacheData(provider, err.message);
 
-      if (wsRequestId) {
-        sendJson({
-          type: MSG_TYPE_REFRESH_RESULT,
-          requestId: wsRequestId,
-          provider: providerId,
-          data: errData,
-        });
-      }
+      sendJson({
+        type: MSG_TYPE_REFRESH_RESULT,
+        requestId: wsRequestId,
+        provider: providerId,
+        data: errData,
+      });
 
       await setQuotaCacheEntry(providerId, errData);
     }

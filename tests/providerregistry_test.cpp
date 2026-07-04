@@ -54,6 +54,8 @@ private slots:
   void browserExtProviderHeaderExists ();
   void browserExtProviderCppExists ();
   void browserExtProviderAllowsSlowQuotaPages ();
+  void browserExtProviderAcceptsUnsolicitedRefreshResult ();
+  void extensionPushesSelfInitiatedRefreshResults ();
   void extensionTabExtractionWaitsForSpaRendering ();
   void cmakeUsesWebSockets ();
   void cmakeRemovesWebEngine ();
@@ -728,6 +730,102 @@ ProviderRegistryTest::browserExtProviderAllowsSlowQuotaPages ()
             qPrintable (QStringLiteral (
                 "Browser extension provider timeout is too short: %1ms")
                             .arg (timeoutMs)));
+}
+
+void
+ProviderRegistryTest::browserExtProviderAcceptsUnsolicitedRefreshResult ()
+{
+  // Regression guard: self-initiated extension refreshes (auto-refresh alarm,
+  // popup/options manual refresh) arrive with an empty requestId and must
+  // reach the taskbar via refreshCompleted, otherwise the taskbar shows stale
+  // data while the extension popup shows fresh data.
+  QFile file (QStringLiteral (SOURCE_DIR "/src/browser_ext_provider.cpp"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype fnStart = content.indexOf (
+      QStringLiteral ("\nBrowserExtProvider::onRefreshResult"));
+  QVERIFY2 (fnStart >= 0, "onRefreshResult not found");
+  const qsizetype braceStart = content.indexOf (QLatin1Char ('{'), fnStart);
+  QVERIFY (braceStart >= 0);
+
+  const qsizetype emptyCheck = content.indexOf (
+      QStringLiteral ("requestId.isEmpty ()"), braceStart);
+  QVERIFY2 (emptyCheck >= 0,
+            "onRefreshResult has no empty-requestId branch for unsolicited pushes");
+
+  const qsizetype currentIdFilter = content.indexOf (
+      QStringLiteral ("requestId != m_currentRequestId"), braceStart);
+  QVERIFY2 (currentIdFilter >= 0,
+            "onRefreshResult missing the m_currentRequestId guard");
+
+  // The empty-requestId branch must run before the m_currentRequestId filter,
+  // so pushes are never dropped as out-of-request.
+  QVERIFY2 (emptyCheck < currentIdFilter,
+            "unsolicited push handling must precede the m_currentRequestId filter");
+
+  const QString emptyBlock = content.mid (
+      emptyCheck, currentIdFilter - emptyCheck);
+  QVERIFY (emptyBlock.contains (QStringLiteral ("emit refreshCompleted")));
+  QVERIFY (emptyBlock.contains (QStringLiteral ("return")));
+}
+
+void
+ProviderRegistryTest::extensionPushesSelfInitiatedRefreshResults ()
+{
+  // The extension must send refresh_result for ALL refreshes (including
+  // self-initiated ones with wsRequestId === null), not only for
+  // taskbar-initiated ones. Otherwise the taskbar drifts out of sync.
+  QFile file (QStringLiteral (SOURCE_DIR "/extension/service-worker.js"));
+  QVERIFY2 (file.open (QIODevice::ReadOnly), qPrintable (file.errorString ()));
+  const QString content = QString::fromUtf8 (file.readAll ());
+
+  const qsizetype drainStart = content.indexOf (
+      QStringLiteral ("async function drainRefreshQueue"));
+  QVERIFY2 (drainStart >= 0, "drainRefreshQueue not found");
+  const qsizetype drainEnd = content.indexOf (
+      QStringLiteral ("refreshRunning = false"), drainStart);
+  QVERIFY2 (drainEnd >= 0, "drainRefreshQueue end not found");
+
+  const QString body = content.mid (drainStart, drainEnd - drainStart);
+
+  // The two normal-path refresh_result sites (success + error) must push for
+  // ALL refreshes including self-initiated ones (wsRequestId === null). They
+  // sit right before a `setQuotaCacheEntry` write and must NOT be guarded by
+  // `if (wsRequestId) {`. The third site (unknown-provider early return) is
+  // intentionally still guarded, since it only answers taskbar requests.
+  int cacheFrom = 0;
+  int unguardedSites = 0;
+  while (true)
+    {
+      const int cacheIdx = body.indexOf (
+          QStringLiteral ("await setQuotaCacheEntry"), cacheFrom);
+      if (cacheIdx < 0) break;
+
+      // The sendJson(refresh_result) call sits a few lines above this write.
+      const QString pre = body.left (cacheIdx);
+      const int sendJsonIdx = pre.lastIndexOf (
+          QStringLiteral ("sendJson("));
+      QVERIFY2 (sendJsonIdx >= 0,
+                "setQuotaCacheEntry site has no preceding sendJson call");
+
+      const QString callBlock = pre.mid (sendJsonIdx, cacheIdx - sendJsonIdx);
+      QVERIFY (callBlock.contains (
+          QStringLiteral ("type: MSG_TYPE_REFRESH_RESULT")));
+      QVERIFY (callBlock.contains (
+          QStringLiteral ("requestId: wsRequestId")));
+
+      QVERIFY2 (!callBlock.contains (QStringLiteral ("if (wsRequestId) {")),
+                "normal-path refresh_result is still guarded by if (wsRequestId)");
+
+      ++unguardedSites;
+      cacheFrom = cacheIdx + 1;
+    }
+
+  QVERIFY2 (unguardedSites == 2,
+            qPrintable (QStringLiteral (
+                "expected 2 unguarded refresh_result sites (success + error), got %1")
+                            .arg (unguardedSites)));
 }
 
 void

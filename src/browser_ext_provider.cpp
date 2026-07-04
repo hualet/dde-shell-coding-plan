@@ -87,6 +87,21 @@ BrowserExtProvider::onRefreshResult (const QString &requestId,
                                      const QString &provider,
                                      const QVariantMap &data)
 {
+  // Empty requestId means the extension pushed a self-initiated refresh
+  // result (auto-refresh alarm, popup/options manual refresh). These must
+  // still reach the taskbar so it stays in sync with the extension's popup
+  // cache; they are not part of any taskbar-initiated request bookkeeping.
+  if (requestId.isEmpty ())
+    {
+      const QuotaSnapshot pushed = resultToSnapshot (provider, data);
+      qInfo () << "[coding-plan][ext] unsolicited refresh result for"
+               << provider << "status"
+               << snapshotStatusToString (pushed.status)
+               << "ratio" << pushed.remainingRatio;
+      emit refreshCompleted (provider, pushed);
+      return;
+    }
+
   if (requestId != m_currentRequestId)
     {
       return;
