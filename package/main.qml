@@ -40,6 +40,18 @@ AppletItem {
         return "#8b949e"
     }
 
+    // Inner ring uses a slightly lighter shade of each severity color so the
+    // two rings are distinguishable when both are visible.
+    function severityColorInner(severity) {
+        if (severity === "normal")
+            return "#5dd896"
+        if (severity === "warning")
+            return "#fac06a"
+        if (severity === "critical")
+            return "#f07a80"
+        return "#aeb6c2"
+    }
+
     function providerInitial(name) {
         if (!name || name.length === 0)
             return "?"
@@ -158,30 +170,67 @@ AppletItem {
                     const ctx = getContext("2d")
                     ctx.clearRect(0, 0, width, height)
                     const center = width / 2
-                    const lineWidth = 6
-                    const radius = center - lineWidth / 2
+                    const ringWidth = 4
+                    const ringGap = 1
+                    const outerRadius = center - ringWidth / 2
+                    const innerRadius = center - ringWidth - ringGap - ringWidth / 2
                     const isError = snapshot.severity === "error"
 
-                    ctx.lineWidth = lineWidth
+                    const weeklyRaw = snapshot.remainingRatio
+                    const weeklyRatio = (weeklyRaw !== undefined && weeklyRaw !== null && weeklyRaw >= 0)
+                        ? Math.max(0, Math.min(1, weeklyRaw))
+                        : 0
+
+                    const fiveHourRaw = snapshot.fiveHourRemainingRatio
+                    const fiveHourValid = (fiveHourRaw !== undefined && fiveHourRaw !== null && fiveHourRaw >= 0)
+                    const fiveHourRatio = fiveHourValid ? Math.max(0, Math.min(1, fiveHourRaw)) : 0
+
+                    function clampRaw(v) {
+                        return (v !== undefined && v !== null && v >= 0) ? Math.max(0, Math.min(1, v)) : -1
+                    }
+
+                    ctx.lineWidth = ringWidth
                     ctx.strokeStyle = root.ringTrackColor
                     ctx.beginPath()
-                    ctx.arc(center, center, radius, 0, Math.PI * 2)
+                    ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
+                    ctx.stroke()
+
+                    ctx.lineWidth = ringWidth
+                    ctx.strokeStyle = root.ringTrackColor
+                    ctx.beginPath()
+                    ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
                     ctx.stroke()
 
                     if (isError) {
+                        ctx.lineWidth = ringWidth
                         ctx.strokeStyle = root.errorRingColor
                         ctx.beginPath()
-                        ctx.arc(center, center, radius, 0, Math.PI * 2)
+                        ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
+                        ctx.stroke()
+
+                        ctx.lineWidth = ringWidth
+                        ctx.strokeStyle = root.errorRingColor
+                        ctx.beginPath()
+                        ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
                         ctx.stroke()
                     } else {
-                        const raw = snapshot.fiveHourRemainingRatio
-                        const ratio = (raw !== undefined && raw !== null && raw >= 0)
-                            ? Math.max(0, Math.min(1, raw))
-                            : 0
-                        ctx.strokeStyle = root.severityColor(root.fiveHourSeverity(snapshot))
+                        const outerSeverity = clampRaw(weeklyRaw) < 0
+                            ? "error"
+                            : (clampRaw(weeklyRaw) < 0.10 ? "critical"
+                                : (clampRaw(weeklyRaw) <= 0.30 ? "warning" : "normal"))
+                        ctx.lineWidth = ringWidth
+                        ctx.strokeStyle = root.severityColor(outerSeverity)
                         ctx.beginPath()
-                        ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio)
+                        ctx.arc(center, center, outerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * weeklyRatio)
                         ctx.stroke()
+
+                        if (fiveHourValid) {
+                            ctx.lineWidth = ringWidth
+                            ctx.strokeStyle = root.severityColorInner(root.fiveHourSeverity(snapshot))
+                            ctx.beginPath()
+                            ctx.arc(center, center, innerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fiveHourRatio)
+                            ctx.stroke()
+                        }
                     }
                 }
 
@@ -299,7 +348,7 @@ AppletItem {
 
                                         DciIcon {
                                             anchors.centerIn: parent
-                                            name: "utilities-terminal-symbolic"
+                                            name: "utilities-terminal"
                                             sourceSize: Qt.size(16, 16)
                                         }
 
@@ -323,7 +372,7 @@ AppletItem {
                                         anchors.fill: parent
                                         from: 0
                                         to: 1
-                                        value: Math.max(0, modelData.fiveHourRemainingRatio >= 0 ? modelData.fiveHourRemainingRatio : modelData.remainingRatio)
+                                        value: Math.max(0, modelData.fiveHourRemainingRatio >= 0 ? modelData.fiveHourRemainingRatio : 0)
                                     }
 
                                     Label {

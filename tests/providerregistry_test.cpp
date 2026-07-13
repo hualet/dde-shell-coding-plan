@@ -35,6 +35,7 @@ private slots:
   void fiveHourQuotaPercentFallsBackToText ();
   void panelQmlDockWidgetUsesOneFiveHourRingPerProvider ();
   void modelTooltipUsesFiveHourQuota ();
+  void modelTooltipFallsBackToWeeklyQuota ();
   void browserExtResultParsesCorrectly ();
   void sourceTypeIsBrowserExt ();
   void panelQmlShowsExtensionConnectionStatus ();
@@ -189,7 +190,8 @@ ProviderRegistryTest::panelQmlTitleHasConsoleIcon ()
   const QString qml = QString::fromUtf8 (file.readAll ());
 
   QVERIFY (!qml.contains (QStringLiteral ("consoleBtn")));
-  QVERIFY (qml.contains (QStringLiteral ("utilities-terminal-symbolic")));
+  QVERIFY (qml.contains (QStringLiteral ("utilities-terminal")));
+  QVERIFY (!qml.contains (QStringLiteral ("utilities-terminal-symbolic")));
   QVERIFY (qml.contains (QStringLiteral ("DciIcon {")));
 
   QVERIFY (qml.contains (QStringLiteral ("modelData.providerId")));
@@ -375,12 +377,17 @@ ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
   QVERIFY (qml.contains (QStringLiteral ("Repeater {")));
   QVERIFY (qml.contains (QStringLiteral ("model: root.visibleRingCount")));
   QVERIFY (qml.contains (QStringLiteral ("readonly property var snapshot: root.quotaSnapshots[index]")));
-  QVERIFY (qml.contains (QStringLiteral ("const lineWidth = 6")));
+  QVERIFY (qml.contains (QStringLiteral ("const ringWidth")));
+  QVERIFY (qml.contains (QStringLiteral ("const ringGap")));
+  QVERIFY (qml.contains (QStringLiteral ("const outerRadius")));
+  QVERIFY (qml.contains (QStringLiteral ("const innerRadius")));
+  QVERIFY (qml.contains (QStringLiteral ("weeklyRatio")));
+  QVERIFY (qml.contains (QStringLiteral ("fiveHourRatio")));
+  QVERIFY (qml.contains (QStringLiteral ("severityColorInner")));
   QVERIFY (qml.contains (QStringLiteral ("root.fiveHourSeverity(snapshot)")));
   QVERIFY (qml.contains (QStringLiteral ("root.providerInitial(parent.snapshot.providerName)")));
   QVERIFY (qml.contains (QStringLiteral ("font.pixelSize: Math.max(9, parent.width * 0.35)")));
-  QVERIFY (!qml.contains (QStringLiteral ("const outerRatio")));
-  QVERIFY (!qml.contains (QStringLiteral ("const innerRatio")));
+  QVERIFY (!qml.contains (QStringLiteral ("const lineWidth = 6")));
   QVERIFY (!qml.contains (QStringLiteral ("readonly property var widgetSnapshot")));
 }
 
@@ -404,6 +411,40 @@ ProviderRegistryTest::modelTooltipUsesFiveHourQuota ()
     const QString tooltip = model.tooltipText ();
     QVERIFY (tooltip.contains (QStringLiteral ("Codex / ChatGPT: 40%")));
     QVERIFY (!tooltip.contains (QStringLiteral ("Codex / ChatGPT: 75%")));
+  }
+
+  if (oldSnapshots.isValid ())
+    {
+      settings.setValue (QStringLiteral ("snapshots"), oldSnapshots);
+    }
+  else
+    {
+      settings.remove (QStringLiteral ("snapshots"));
+    }
+  settings.sync ();
+}
+
+void
+ProviderRegistryTest::modelTooltipFallsBackToWeeklyQuota ()
+{
+  QSettings settings (QStringLiteral ("deepin"),
+                      QStringLiteral ("dde-shell-coding-plan"));
+  const QVariant oldSnapshots = settings.value (QStringLiteral ("snapshots"));
+
+  {
+    CodingPlanModel model;
+    QVariantMap result;
+    result.insert (QStringLiteral ("remainingRatio"), 0.75);
+    result.insert (QStringLiteral ("balanceText"), QStringLiteral ("75%"));
+    // No five-hour quota (codex cancelled it) — fiveHour stays -1.
+
+    model.setBrowserExtResult (QStringLiteral ("codex"), result);
+
+    const QString tooltip = model.tooltipText ();
+    QVERIFY2 (tooltip.contains (QStringLiteral ("Codex / ChatGPT: 75%")),
+              qPrintable (QStringLiteral ("Tooltip should fall back to weekly "
+                                          "quota when five-hour is unavailable, "
+                                          "got: %1").arg (tooltip)));
   }
 
   if (oldSnapshots.isValid ())

@@ -142,6 +142,15 @@ CodingPlanModel::tooltipText () const
         {
           value = snapshot.fiveHourBalanceText;
         }
+      else if (snapshot.remainingRatio >= 0)
+        {
+          value = QStringLiteral ("%1%").arg (
+              qRound (snapshot.remainingRatio * 100));
+        }
+      else if (!snapshot.balanceText.isEmpty ())
+        {
+          value = snapshot.balanceText;
+        }
       lines.append (QStringLiteral ("%1: %2").arg (snapshot.providerName, value));
     }
 
