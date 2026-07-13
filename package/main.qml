@@ -27,8 +27,11 @@ AppletItem {
     readonly property color ringTrackColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
     readonly property color errorRingColor: "#ef4444"
 
-    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, visibleRingCount * (dockSize * 3 / 5) + (visibleRingCount - 1) * 4 + 16)
-    implicitHeight: dockSize
+    readonly property real ringSize: dockSize * 3 / 5
+    readonly property real ringsExtent: visibleRingCount * ringSize + (visibleRingCount - 1) * 4 + 16
+
+    implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, ringsExtent)
+    implicitHeight: useColumnLayout ? Math.max(dockSize, ringsExtent) : dockSize
 
     function severityColor(severity) {
         if (severity === "normal")
@@ -152,109 +155,112 @@ AppletItem {
         }
     }
 
-    Row {
-        anchors.centerIn: parent
-        spacing: 4
-        visible: root.visibleRingCount > 0
+    // In horizontal dock mode the rings sit side by side; in vertical (left/
+    // right) dock mode they stack so they don't overflow the narrow column.
+    Repeater {
+        model: root.visibleRingCount
 
-        Repeater {
-            model: root.visibleRingCount
+        Canvas {
+            id: ring
+            width: root.ringSize
+            height: root.ringSize
+            // Stack vertically in column layout, lay out horizontally otherwise.
+            x: root.useColumnLayout
+                ? (parent.width - width) / 2
+                : (parent.width - root.ringsExtent) / 2 + index * (root.ringSize + 4)
+            y: root.useColumnLayout
+                ? (parent.height - root.ringsExtent) / 2 + index * (root.ringSize + 4)
+                : (parent.height - height) / 2
+            readonly property var snapshot: root.quotaSnapshots[index]
 
-            Canvas {
-                id: ring
-                width: root.dockSize * 3 / 5
-                height: root.dockSize * 3 / 5
-                readonly property var snapshot: root.quotaSnapshots[index]
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.clearRect(0, 0, width, height)
+                const center = width / 2
+                const ringWidth = 4
+                const ringGap = 1
+                const outerRadius = center - ringWidth / 2
+                const innerRadius = center - ringWidth - ringGap - ringWidth / 2
+                const isError = snapshot.severity === "error"
 
-                onPaint: {
-                    const ctx = getContext("2d")
-                    ctx.clearRect(0, 0, width, height)
-                    const center = width / 2
-                    const ringWidth = 4
-                    const ringGap = 1
-                    const outerRadius = center - ringWidth / 2
-                    const innerRadius = center - ringWidth - ringGap - ringWidth / 2
-                    const isError = snapshot.severity === "error"
+                const weeklyRaw = snapshot.remainingRatio
+                const weeklyRatio = (weeklyRaw !== undefined && weeklyRaw !== null && weeklyRaw >= 0)
+                    ? Math.max(0, Math.min(1, weeklyRaw))
+                    : 0
 
-                    const weeklyRaw = snapshot.remainingRatio
-                    const weeklyRatio = (weeklyRaw !== undefined && weeklyRaw !== null && weeklyRaw >= 0)
-                        ? Math.max(0, Math.min(1, weeklyRaw))
-                        : 0
+                const fiveHourRaw = snapshot.fiveHourRemainingRatio
+                const fiveHourValid = (fiveHourRaw !== undefined && fiveHourRaw !== null && fiveHourRaw >= 0)
+                const fiveHourRatio = fiveHourValid ? Math.max(0, Math.min(1, fiveHourRaw)) : 0
 
-                    const fiveHourRaw = snapshot.fiveHourRemainingRatio
-                    const fiveHourValid = (fiveHourRaw !== undefined && fiveHourRaw !== null && fiveHourRaw >= 0)
-                    const fiveHourRatio = fiveHourValid ? Math.max(0, Math.min(1, fiveHourRaw)) : 0
+                function clampRaw(v) {
+                    return (v !== undefined && v !== null && v >= 0) ? Math.max(0, Math.min(1, v)) : -1
+                }
 
-                    function clampRaw(v) {
-                        return (v !== undefined && v !== null && v >= 0) ? Math.max(0, Math.min(1, v)) : -1
-                    }
+                ctx.lineWidth = ringWidth
+                ctx.strokeStyle = root.ringTrackColor
+                ctx.beginPath()
+                ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
+                ctx.stroke()
 
+                ctx.lineWidth = ringWidth
+                ctx.strokeStyle = root.ringTrackColor
+                ctx.beginPath()
+                ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
+                ctx.stroke()
+
+                if (isError) {
                     ctx.lineWidth = ringWidth
-                    ctx.strokeStyle = root.ringTrackColor
+                    ctx.strokeStyle = root.errorRingColor
                     ctx.beginPath()
                     ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
                     ctx.stroke()
 
                     ctx.lineWidth = ringWidth
-                    ctx.strokeStyle = root.ringTrackColor
+                    ctx.strokeStyle = root.errorRingColor
                     ctx.beginPath()
                     ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
                     ctx.stroke()
+                } else {
+                    const outerSeverity = clampRaw(weeklyRaw) < 0
+                        ? "error"
+                        : (clampRaw(weeklyRaw) < 0.10 ? "critical"
+                            : (clampRaw(weeklyRaw) <= 0.30 ? "warning" : "normal"))
+                    ctx.lineWidth = ringWidth
+                    ctx.strokeStyle = root.severityColor(outerSeverity)
+                    ctx.beginPath()
+                    ctx.arc(center, center, outerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * weeklyRatio)
+                    ctx.stroke()
 
-                    if (isError) {
+                    if (fiveHourValid) {
                         ctx.lineWidth = ringWidth
-                        ctx.strokeStyle = root.errorRingColor
+                        ctx.strokeStyle = root.severityColorInner(root.fiveHourSeverity(snapshot))
                         ctx.beginPath()
-                        ctx.arc(center, center, outerRadius, 0, Math.PI * 2)
+                        ctx.arc(center, center, innerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fiveHourRatio)
                         ctx.stroke()
-
-                        ctx.lineWidth = ringWidth
-                        ctx.strokeStyle = root.errorRingColor
-                        ctx.beginPath()
-                        ctx.arc(center, center, innerRadius, 0, Math.PI * 2)
-                        ctx.stroke()
-                    } else {
-                        const outerSeverity = clampRaw(weeklyRaw) < 0
-                            ? "error"
-                            : (clampRaw(weeklyRaw) < 0.10 ? "critical"
-                                : (clampRaw(weeklyRaw) <= 0.30 ? "warning" : "normal"))
-                        ctx.lineWidth = ringWidth
-                        ctx.strokeStyle = root.severityColor(outerSeverity)
-                        ctx.beginPath()
-                        ctx.arc(center, center, outerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * weeklyRatio)
-                        ctx.stroke()
-
-                        if (fiveHourValid) {
-                            ctx.lineWidth = ringWidth
-                            ctx.strokeStyle = root.severityColorInner(root.fiveHourSeverity(snapshot))
-                            ctx.beginPath()
-                            ctx.arc(center, center, innerRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fiveHourRatio)
-                            ctx.stroke()
-                        }
                     }
                 }
+            }
 
-                Connections {
-                    target: Applet.quota
-                    function onSnapshotsChanged() {
-                        ring.requestPaint()
-                    }
+            Connections {
+                target: Applet.quota
+                function onSnapshotsChanged() {
+                    ring.requestPaint()
                 }
+            }
 
-                Connections {
-                    target: root
-                    function onIsDarkThemeChanged() {
-                        ring.requestPaint()
-                    }
+            Connections {
+                target: root
+                function onIsDarkThemeChanged() {
+                    ring.requestPaint()
                 }
+            }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: root.providerInitial(parent.snapshot.providerName)
-                    font.pixelSize: Math.max(9, parent.width * 0.35)
-                    font.bold: true
-                    color: root.ringTextColor
-                }
+            Text {
+                anchors.centerIn: parent
+                text: root.providerInitial(parent.snapshot.providerName)
+                font.pixelSize: Math.max(9, parent.width * 0.35)
+                font.bold: true
+                color: root.ringTextColor
             }
         }
     }
