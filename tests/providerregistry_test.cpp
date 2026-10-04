@@ -242,7 +242,7 @@ ProviderRegistryTest::codexProviderUrlsMatchAnalyticsUsage ()
             QStringLiteral ("https://chatgpt.com/auth/login"));
   QCOMPARE (provider.consoleUrl,
             QStringLiteral (
-                "https://chatgpt.com/codex/cloud/settings/analytics#usage"));
+                "https://chatgpt.com/settings/usage?tab=overview"));
   QCOMPARE (provider.sourceType, SourceType::BrowserExt);
 }
 

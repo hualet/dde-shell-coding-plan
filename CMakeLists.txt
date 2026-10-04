@@ -75,4 +75,9 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME providerregistry_tests COMMAND providerregistry_tests)
+    find_program(NODE_EXECUTABLE node)
+    if(NODE_EXECUTABLE)
+        add_test(NAME codex_extraction_tests
+            COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/extension/tests/codex_test.js)
+    endif()
 endif()

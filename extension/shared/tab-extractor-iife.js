@@ -231,21 +231,34 @@ function readQuotaFromDoc(doc) {
       extract: function(doc) {
     const normalized = normalizeBodyText(doc);
 
-    if (normalized.indexOf("Codex") < 0 && !doc.location?.pathname?.includes("/codex/cloud/settings/analytics")) {
-      return { success: false, reason: "Not on Codex analytics page" };
+    const isUsagePage = doc.location?.pathname === "/settings/usage";
+    if (isUsagePage && new URLSearchParams(doc.location?.search || "").get("tab") === "analytics") {
+      return { success: false, reason: "Usage analytics contains historical usage, not current quota" };
+    }
+    if (!isUsagePage && normalized.indexOf("Codex") < 0 && !doc.location?.pathname?.includes("/codex/cloud/settings/analytics")) {
+      return { success: false, reason: "Not on Codex usage page" };
     }
 
     const lines = splitIntoLines(normalized);
+    const fiveHourPattern = /^(?:5\s*小时.*(?:使用|限额|限制|额度)|5[\s-]*hour.*(?:usage|limit))/i;
+    const weeklyPattern = /^(?:(?:每周|周).*(?:使用|限额|限制|额度)|weekly.*(?:usage|limit))/i;
 
-    let fiveHour = findQuotaInLines(lines, [/5\s*小时.*(使用|限额|限制|额度)/i, /5\s*hour.*(usage|limit)/i, /5-hour.*(usage|limit)/i]);
-    let weekly = findQuotaInLines(lines, [/(每周|周).*(使用|限额|限制|额度)/i, /weekly.*(usage|limit)/i]);
-
-    if (!fiveHour || !weekly) {
-      const compact = normalized.replace(/\s+/g, "");
-      if (!fiveHour && compact.indexOf("5小时") >= 0) {
-        fiveHour = extractPercent(compact.slice(compact.indexOf("5小时"), compact.indexOf("5小时") + 240));
+    // Bound each quota to its section. Never consume another quota or usage history.
+    function readQuota(pattern) {
+      const start = lines.findIndex(line => pattern.test(line));
+      if (start < 0) return null;
+      for (let i = start; i < Math.min(start + 8, lines.length); ++i) {
+        const line = lines[i];
+        if (i > start && (fiveHourPattern.test(line) || weeklyPattern.test(line) || /^(?:额度|每日用量|套餐用量历史|credits|daily usage|plan usage history)/i.test(line))) break;
+        if (isUsagePage && !/(?:剩余|remaining)/i.test(line)) continue;
+        const quota = extractPercent(line);
+        if (quota) return quota;
       }
+      return null;
     }
+
+    const fiveHour = readQuota(fiveHourPattern);
+    const weekly = readQuota(weeklyPattern);
 
     if (!fiveHour && !weekly) {
       return { success: false, reason: "Could not find quota info on page" };

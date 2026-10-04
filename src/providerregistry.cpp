@@ -78,7 +78,7 @@ ProviderRegistry::createDefault ()
         SourceType::BrowserExt,
         QStringLiteral ("https://chatgpt.com/auth/login"),
         QStringLiteral (
-            "https://chatgpt.com/codex/cloud/settings/analytics#usage") });
+            "https://chatgpt.com/settings/usage?tab=overview") });
 
   registry.addProvider (
       { QStringLiteral ("kimi-code"),
