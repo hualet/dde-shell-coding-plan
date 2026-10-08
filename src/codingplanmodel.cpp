@@ -18,6 +18,7 @@
 #include <QUuid>
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -26,7 +27,11 @@ constexpr auto kSettingsApplication = "dde-shell-coding-plan";
 constexpr auto kSnapshotsKey = "snapshots";
 constexpr auto kManualAccountsKey = "manualAccounts";
 constexpr auto kProviderKeysFile = "provider-keys.json";
-constexpr int kAutoRefreshIntervalMs = 15 * 60 * 1000;
+// Adaptive auto-refresh: poll every minute while quotas move, back off by
+// 30 s per quiet round, never slower than every 5 minutes.
+constexpr int kAutoRefreshMinIntervalMs = 60 * 1000;
+constexpr int kAutoRefreshStepMs = 30 * 1000;
+constexpr int kAutoRefreshMaxIntervalMs = 5 * 60 * 1000;
 constexpr int kStaleKeepSeconds = 30 * 60; // keep a good snapshot this long on errors
 
 // Providers whose quota an API key alone can read (manual accounts).
@@ -77,6 +82,18 @@ statusFromString (const QString &status)
   return SnapshotStatus::Unsupported;
 }
 
+// What the user sees of a quota; a change in any of it counts as activity.
+bool
+quotaChanged (const QuotaSnapshot &before, const QuotaSnapshot &after)
+{
+  const auto differs = [](double a, double b) { return std::abs (a - b) > 1e-6; };
+  return before.status != after.status
+      || differs (before.remainingRatio, after.remainingRatio)
+      || differs (before.fiveHourRemainingRatio, after.fiveHourRemainingRatio)
+      || before.balanceText != after.balanceText
+      || before.fiveHourBalanceText != after.fiveHourBalanceText;
+}
+
 bool
 hasGoodData (const QuotaSnapshot &snapshot)
 {
@@ -103,9 +120,10 @@ CodingPlanModel::CodingPlanModel (QObject *parent)
   rebuildEntries ();
   ensureSnapshots ();
 
-  m_autoRefreshTimer.setInterval (kAutoRefreshIntervalMs);
+  m_autoRefreshTimer.setSingleShot (true);
+  m_autoRefreshTimer.setInterval (kAutoRefreshMinIntervalMs);
   connect (&m_autoRefreshTimer, &QTimer::timeout, this,
-           &CodingPlanModel::refreshAll);
+           &CodingPlanModel::onAutoRefreshTick);
 }
 
 QVariantList
@@ -356,6 +374,10 @@ CodingPlanModel::applyQuotaResult (const QString &entryId,
   snapshot.status = SnapshotStatus::Ok;
   snapshot.message = result.value (QStringLiteral ("message")).toString ();
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
+  if (quotaChanged (m_snapshots.value (entryId, placeholderSnapshot (entry)), snapshot))
+    {
+      m_quotaChangedSinceTick = true;
+    }
   m_snapshots.insert (entryId, snapshot);
   saveSnapshots ();
   emit snapshotsChanged ();
@@ -364,8 +386,29 @@ CodingPlanModel::applyQuotaResult (const QString &entryId,
 void
 CodingPlanModel::startAutoRefresh ()
 {
+  m_quotaChangedSinceTick = false;
   refreshAll ();
-  m_autoRefreshTimer.start ();
+  m_autoRefreshTimer.start (kAutoRefreshMinIntervalMs);
+}
+
+int
+CodingPlanModel::autoRefreshIntervalMs () const
+{
+  return m_autoRefreshTimer.interval ();
+}
+
+void
+CodingPlanModel::onAutoRefreshTick ()
+{
+  // The previous round's replies are in by now (request timeout < minimum
+  // interval): any quota movement snaps back to the fast pace.
+  const int interval = m_quotaChangedSinceTick
+      ? kAutoRefreshMinIntervalMs
+      : std::min (m_autoRefreshTimer.interval () + kAutoRefreshStepMs,
+                  kAutoRefreshMaxIntervalMs);
+  m_quotaChangedSinceTick = false;
+  refreshAll ();
+  m_autoRefreshTimer.start (interval);
 }
 
 void
@@ -737,9 +780,16 @@ CodingPlanModel::onRefreshCompleted (const QString &entryId,
       return;
     }
 
+  const Entry entry = m_entries.at (entryIndex (entryId));
   QuotaSnapshot stored = snapshot;
   stored.entryId = entryId;
-  stored.label = m_entries.at (entryIndex (entryId)).label;
+  stored.label = entry.label;
+  // Only successful reads count as quota movement: failures back off too,
+  // so a failing endpoint is not hammered every minute.
+  if (quotaChanged (m_snapshots.value (entryId, placeholderSnapshot (entry)), stored))
+    {
+      m_quotaChangedSinceTick = true;
+    }
   m_snapshots.insert (entryId, stored);
   saveSnapshots ();
   emit snapshotsChanged ();

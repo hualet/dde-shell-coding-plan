@@ -18,7 +18,7 @@
 
 namespace
 {
-constexpr int kRequestTimeoutMs = 15000;
+constexpr int kRequestTimeoutMs = 30000;
 
 // Codex identifies itself the way the CLI does; the backend serves and gates
 // by that identity (see magpie's codexSign).

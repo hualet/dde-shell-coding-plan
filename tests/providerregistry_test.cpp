@@ -78,6 +78,7 @@ private slots:
   void authFailureIsNeverMaskedByStaleSnapshot ();
   void snapshotsPersistResetAndCounts ();
   void modelAutoRefreshIsCppSide ();
+  void autoRefreshBacksOffUntilQuotaChanges ();
 
   // Panel / build structure contracts
   void panelQmlLeftClickOpensStatusPopup ();
@@ -1023,10 +1024,49 @@ void
 ProviderRegistryTest::modelAutoRefreshIsCppSide ()
 {
   const QString header = readFile (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.h"));
-  QVERIFY (header.contains (QStringLiteral ("kAutoRefreshIntervalMs"))
-           || readFile (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"))
-                   .contains (QStringLiteral ("kAutoRefreshIntervalMs")));
   QVERIFY (header.contains (QStringLiteral ("startAutoRefresh")));
+  const QString source = readFile (
+      QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
+  QVERIFY (source.contains (QStringLiteral ("kRequestTimeoutMs = 30000")));
+}
+
+void
+ProviderRegistryTest::autoRefreshBacksOffUntilQuotaChanges ()
+{
+  resetPersistence ();
+  CodingPlanModel model;
+  // No entries: ticks issue no network requests.
+  model.setCredentialProbe ([](const QString &) { return false; });
+  const auto tick = [&model]() {
+    QVERIFY (QMetaObject::invokeMethod (&model, "onAutoRefreshTick",
+                                        Qt::DirectConnection));
+  };
+
+  model.startAutoRefresh ();
+  QCOMPARE (model.autoRefreshIntervalMs (), 60 * 1000);
+
+  // Quiet rounds: 1.5, 2, 2.5 … minutes, capped at 5.
+  const QList<int> expected = { 90, 120, 150, 180, 210, 240, 270, 300, 300 };
+  for (const int seconds : expected)
+    {
+      tick ();
+      QCOMPARE (model.autoRefreshIntervalMs (), seconds * 1000);
+    }
+
+  // A quota movement snaps back to one minute.
+  model.setCredentialProbe ([](const QString &id) {
+    return id == QStringLiteral ("codex");
+  });
+  QVariantMap result;
+  result.insert (QStringLiteral ("remainingRatio"), 0.5);
+  model.applyQuotaResult (QStringLiteral ("codex"), result);
+  model.setCredentialProbe ([](const QString &) { return false; });
+  tick ();
+  QCOMPARE (model.autoRefreshIntervalMs (), 60 * 1000);
+
+  // An unchanged reading counts as quiet again.
+  tick ();
+  QCOMPARE (model.autoRefreshIntervalMs (), 90 * 1000);
 }
 
 // ---------------------------------------------------------------------------

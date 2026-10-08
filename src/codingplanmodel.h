@@ -47,7 +47,10 @@ public:
   Q_INVOKABLE void applyQuotaResult (const QString &entryId,
                                      const QVariantMap &result);
 
+  // Adaptive polling: 1 min while quotas change, +30 s per quiet round,
+  // capped at 5 min.
   void startAutoRefresh ();
+  int autoRefreshIntervalMs () const;
 
   // Test seam: decides which auto-detectable providers have credentials.
   void setCredentialProbe (const std::function<bool (const QString &)> &probe);
@@ -57,6 +60,7 @@ signals:
   void snapshotsChanged ();
 
 private slots:
+  void onAutoRefreshTick ();
   void onRefreshCompleted (const QString &entryId, const QuotaSnapshot &snapshot);
   void onRefreshFailed (const QString &entryId, const QString &message,
                         SnapshotStatus status);
@@ -93,6 +97,7 @@ private:
   QList<Entry> m_manualEntries;
   QHash<QString, QuotaSnapshot> m_snapshots;
   QTimer m_autoRefreshTimer;
+  bool m_quotaChangedSinceTick = false;
   DirectQuotaProvider *m_provider = nullptr;
   std::function<bool (const QString &)> m_credentialProbe;
 };
