@@ -5,6 +5,7 @@
 
 #include <QDateTime>
 #include <QHash>
+#include <QMetaType>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
@@ -39,6 +40,8 @@ enum class PanelSeverity
   Error,
 };
 
+Q_DECLARE_METATYPE (SnapshotStatus)
+
 struct ProviderDefinition
 {
   QString id;
@@ -50,6 +53,8 @@ struct ProviderDefinition
 
 struct QuotaSnapshot
 {
+  QString entryId; // auto entries: providerId; manual: "manual:<uuid>"
+  QString label;   // user-given account label ("" for auto-detected entries)
   QString providerId;
   QString providerName;
   SourceType source = SourceType::BrowserExt;

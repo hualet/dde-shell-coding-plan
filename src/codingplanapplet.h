@@ -8,8 +8,6 @@
 
 DS_USE_NAMESPACE
 
-class WebSocketServer;
-
 class CodingPlanApplet : public DApplet
 {
   Q_OBJECT
@@ -29,5 +27,4 @@ public:
 
 private:
   CodingPlanModel *m_quotaModel = nullptr;
-  WebSocketServer *m_wsServer = nullptr;
 };

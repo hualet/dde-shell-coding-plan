@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(dde-coding-plan VERSION 0.3.0 LANGUAGES CXX)
+project(dde-coding-plan VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2 Test WebSockets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Quick QuickControls2 Test)
 find_package(Dtk6 REQUIRED COMPONENTS Core Gui Widget)
 find_package(DDEShell REQUIRED)
 
@@ -18,10 +18,12 @@ add_library(coding-plan-core STATIC
     src/codingplanmodel.cpp
     src/providerregistry.h
     src/providerregistry.cpp
-    src/websocket_server.h
-    src/websocket_server.cpp
-    src/browser_ext_provider.h
-    src/browser_ext_provider.cpp
+    src/credential_store.h
+    src/credential_store.cpp
+    src/quota_parsers.h
+    src/quota_parsers.cpp
+    src/direct_quota_provider.h
+    src/direct_quota_provider.cpp
 )
 
 target_include_directories(coding-plan-core PUBLIC
@@ -31,7 +33,7 @@ target_include_directories(coding-plan-core PUBLIC
 target_link_libraries(coding-plan-core PUBLIC
     Qt6::Core
     Qt6::Gui
-    Qt6::WebSockets
+    Qt6::Network
 )
 
 add_library(ds-coding-plan-applet SHARED
@@ -47,9 +49,9 @@ target_link_libraries(ds-coding-plan-applet PRIVATE
     coding-plan-core
     Dde::Shell
     Qt6::Core
+    Qt6::Network
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::WebSockets
 )
 
 set(DS_CODING_PLAN_PACKAGE_ID org.deepin.ds.coding-plan)
@@ -70,14 +72,10 @@ if(BUILD_TESTING)
         coding-plan-core
         Qt6::Test
     )
+
     target_compile_definitions(providerregistry_tests PRIVATE
         SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
     add_test(NAME providerregistry_tests COMMAND providerregistry_tests)
-    find_program(NODE_EXECUTABLE node)
-    if(NODE_EXECUTABLE)
-        add_test(NAME codex_extraction_tests
-            COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/extension/tests/codex_test.js)
-    endif()
 endif()

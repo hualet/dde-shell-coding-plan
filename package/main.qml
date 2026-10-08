@@ -103,24 +103,6 @@ AppletItem {
         }
     }
 
-    function copyToClipboard(text) {
-        clipboardHelper.text = text
-        clipboardHelper.selectAll()
-        clipboardHelper.copy()
-    }
-
-    TextEdit {
-        id: clipboardHelper
-        visible: false
-    }
-
-    Timer {
-        id: copyTimer
-        interval: 1500
-        property string tokenText: ""
-        onTriggered: tokenButton.text = qsTr("复制配对 Token")
-    }
-
     PanelToolTip {
         id: toolTip
         text: Applet.quota ? Applet.quota.tooltipText : ""
@@ -305,18 +287,13 @@ AppletItem {
                         Layout.fillWidth: true
                     }
 
-                    Label {
-                        visible: Applet.quota && Applet.quota.extensionConnected
-                        text: qsTr("已连接")
-                        color: "#28c76f"
+                    Button {
+                        flat: true
+                        text: qsTr("添加账号")
                         font.pixelSize: 12
-                    }
-
-                    Label {
-                        visible: !Applet.quota || !Applet.quota.extensionConnected
-                        text: qsTr("未连接")
-                        color: root.secondaryTextColor
-                        font.pixelSize: 12
+                        onClicked: {
+                            addAccountForm.visible = !addAccountForm.visible
+                        }
                     }
                 }
 
@@ -341,7 +318,9 @@ AppletItem {
                                     Layout.fillWidth: true
 
                                     Label {
-                                        text: modelData.providerName
+                                        text: modelData.label && modelData.label.length > 0
+                                            ? modelData.providerName + " · " + modelData.label
+                                            : modelData.providerName
                                         font.pixelSize: 14
                                         font.bold: true
                                         Layout.fillWidth: true
@@ -365,6 +344,29 @@ AppletItem {
                                             onClicked: {
                                                 if (Applet.quota)
                                                     Applet.quota.openConsole(modelData.providerId)
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        visible: modelData.source === "manual"
+                                        implicitWidth: 22
+                                        implicitHeight: 28
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "✕"
+                                            font.pixelSize: 12
+                                            color: root.secondaryTextColor
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (Applet.quota)
+                                                    Applet.quota.removeAccount(modelData.entryId)
                                             }
                                         }
                                     }
@@ -412,36 +414,74 @@ AppletItem {
                     }
                 }
 
-                RowLayout {
+                Button {
                     Layout.fillWidth: true
+                    text: qsTr("刷新全部")
+                    onClicked: root.refreshAll()
+                }
 
-                    Button {
-                        text: qsTr("刷新全部")
+                ColumnLayout {
+                    id: addAccountForm
+                    Layout.fillWidth: true
+                    visible: false
+                    spacing: 8
+
+                    readonly property var capable: Applet.quota ? Applet.quota.manualCapableProviders : []
+
+                    ComboBox {
+                        id: vendorBox
                         Layout.fillWidth: true
-                        onClicked: root.refreshAll()
+                        model: addAccountForm.capable
+                        textRole: "name"
                     }
 
-                    Button {
-                        id: tokenButton
-                        text: qsTr("复制配对 Token")
+                    TextField {
+                        id: labelField
                         Layout.fillWidth: true
-                        onClicked: {
-                            if (Applet.quota) {
-                                var tok = Applet.quota.extensionToken || ""
-                                if (tok.length > 0) {
-                                    root.copyToClipboard(tok)
-                                    text = qsTr("已复制")
-                                    copyTimer.start()
+                        placeholderText: qsTr("备注名（可选，如“工作号”）")
+                        font.pixelSize: 12
+                    }
+
+                    TextField {
+                        id: keyField
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("粘贴 API Key")
+                        echoMode: TextInput.Password
+                        font.pixelSize: 12
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Button {
+                            text: qsTr("添加")
+                            Layout.fillWidth: true
+                            enabled: keyField.text.trim().length > 0
+                                     && addAccountForm.capable.length > 0
+                            onClicked: {
+                                if (Applet.quota && vendorBox.currentIndex >= 0) {
+                                    const vendor = addAccountForm.capable[vendorBox.currentIndex]
+                                    Applet.quota.addAccount(vendor.id, labelField.text, keyField.text)
+                                    labelField.clear()
+                                    keyField.clear()
+                                    addAccountForm.visible = false
                                 }
                             }
+                        }
+
+                        Button {
+                            text: qsTr("取消")
+                            Layout.fillWidth: true
+                            onClicked: addAccountForm.visible = false
                         }
                     }
                 }
 
                 Label {
                     Layout.fillWidth: true
-                    visible: Applet.quota && !Applet.quota.extensionConnected
-                    text: qsTr("请安装浏览器扩展并输入配对 Token 以连接。")
+                    visible: root.quotaSnapshots.length === 0
+                    text: qsTr("未检测到已登录的 Coding CLI（Codex / Kimi / GLM），可在右上角手动添加账号。")
                     wrapMode: Text.WordWrap
                     color: root.secondaryTextColor
                     font.pixelSize: 12

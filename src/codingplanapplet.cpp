@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "codingplanapplet.h"
-#include "websocket_server.h"
 
 #include "pluginfactory.h"
 
@@ -22,18 +21,7 @@ bool
 CodingPlanApplet::init ()
 {
   m_quotaModel = new CodingPlanModel (this);
-
-  m_wsServer = new WebSocketServer (this);
-  if (m_wsServer->start ())
-    {
-      m_quotaModel->setWebSocketServer (m_wsServer);
-    }
-  else
-    {
-      qWarning () << "[coding-plan] failed to start WebSocket server";
-    }
-
-  m_quotaModel->watchExternalChanges ();
+  m_quotaModel->startAutoRefresh ();
   return DApplet::init ();
 }
 

@@ -48,6 +48,8 @@ QVariantMap
 QuotaSnapshot::toVariantMap () const
 {
   QVariantMap result;
+  result.insert (QStringLiteral ("entryId"), entryId);
+  result.insert (QStringLiteral ("label"), label);
   result.insert (QStringLiteral ("providerId"), providerId);
   result.insert (QStringLiteral ("providerName"), providerName);
   result.insert (QStringLiteral ("source"), sourceTypeToString (source));
@@ -75,7 +77,7 @@ ProviderRegistry::createDefault ()
   registry.addProvider (
       { QStringLiteral ("codex"),
         QStringLiteral ("Codex / ChatGPT"),
-        SourceType::BrowserExt,
+        SourceType::OfficialApi,
         QStringLiteral ("https://chatgpt.com/auth/login"),
         QStringLiteral (
             "https://chatgpt.com/settings/usage?tab=overview") });
@@ -83,21 +85,21 @@ ProviderRegistry::createDefault ()
   registry.addProvider (
       { QStringLiteral ("kimi-code"),
         QStringLiteral ("Kimi Code"),
-        SourceType::BrowserExt,
+        SourceType::OfficialApi,
         QStringLiteral ("https://www.kimi.com/code/"),
         QStringLiteral ("https://www.kimi.com/code/console") });
 
   registry.addProvider (
       { QStringLiteral ("glm-coding"),
         QStringLiteral ("GLM Coding"),
-        SourceType::BrowserExt,
+        SourceType::OfficialApi,
         QStringLiteral ("https://bigmodel.cn/"),
         QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage") });
 
   registry.addProvider (
       { QStringLiteral ("minimax"),
         QStringLiteral ("MiniMax Coding"),
-        SourceType::BrowserExt,
+        SourceType::OfficialApi,
         QStringLiteral ("https://platform.minimaxi.com/"),
         QStringLiteral (
             "https://platform.minimaxi.com/user-center/billing") });
