@@ -58,3 +58,6 @@ compile_commands.json
 # Node.js / React
 web/node_modules/
 web/dist/
+
+# ZCode 
+.zcode/
