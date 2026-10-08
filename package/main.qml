@@ -481,7 +481,7 @@ AppletItem {
                 Label {
                     Layout.fillWidth: true
                     visible: root.quotaSnapshots.length === 0
-                    text: qsTr("未检测到已登录的 Coding CLI（Codex / Kimi / GLM），可在右上角手动添加账号。")
+                    text: qsTr("未检测到已登录的 Coding CLI（Codex / Claude / Kimi / GLM），可在右上角手动添加账号。")
                     wrapMode: Text.WordWrap
                     color: root.secondaryTextColor
                     font.pixelSize: 12

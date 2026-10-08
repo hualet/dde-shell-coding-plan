@@ -54,6 +54,29 @@ CredentialStore::kimiCredentialsPath ()
 }
 
 QString
+CredentialStore::claudeCredentialsPath ()
+{
+  const QString configDir = qEnvironmentVariable ("CLAUDE_CONFIG_DIR");
+  const QString base = configDir.isEmpty ()
+      ? QDir::home ().filePath (QStringLiteral (".claude"))
+      : configDir;
+  return QDir (base).filePath (QStringLiteral (".credentials.json"));
+}
+
+QString
+CredentialStore::claudeDesktopUsagePath ()
+{
+  // Claude Desktop samples the plan usage it shows into this file; reading
+  // it needs no token at all.
+  QString configHome = qEnvironmentVariable ("XDG_CONFIG_HOME");
+  if (configHome.isEmpty ())
+    {
+      configHome = QDir::home ().filePath (QStringLiteral (".config"));
+    }
+  return QDir (configHome).filePath (QStringLiteral ("Claude/plan-usage-history.json"));
+}
+
+QString
 CredentialStore::zcodeConfigPath ()
 {
   return QDir::home ().filePath (QStringLiteral (".zcode/v2/config.json"));
@@ -98,6 +121,32 @@ CredentialStore::readKimiCredentials (const QString &path)
     }
   result.present = !result.accessToken.isEmpty ();
   return result;
+}
+
+ClaudeCredentials
+CredentialStore::readClaudeCredentials (const QString &path)
+{
+  ClaudeCredentials result;
+  const QJsonObject oauth = loadJsonObject (path).value (
+      QStringLiteral ("claudeAiOauth")).toObject ();
+  result.accessToken = nonEmpty (oauth.value (QStringLiteral ("accessToken")).toString ());
+  result.subscriptionType = nonEmpty (
+      oauth.value (QStringLiteral ("subscriptionType")).toString ());
+  const double expiresAt = oauth.value (QStringLiteral ("expiresAt")).toDouble (-1);
+  if (expiresAt > 0)
+    {
+      // Claude Code writes milliseconds; stay tolerant of seconds.
+      result.expiresAtMs = QuotaParsers::epochToDateTime (
+          static_cast<qint64> (expiresAt)).toMSecsSinceEpoch ();
+    }
+  result.present = !result.accessToken.isEmpty ();
+  return result;
+}
+
+QJsonObject
+CredentialStore::readJsonFile (const QString &path)
+{
+  return loadJsonObject (path);
 }
 
 GlmPlanCredentials

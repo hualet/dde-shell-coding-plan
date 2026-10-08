@@ -83,6 +83,13 @@ ProviderRegistry::createDefault ()
             "https://chatgpt.com/settings/usage?tab=overview") });
 
   registry.addProvider (
+      { QStringLiteral ("claude"),
+        QStringLiteral ("Claude"),
+        SourceType::OfficialApi,
+        QStringLiteral ("https://claude.ai/login"),
+        QStringLiteral ("https://claude.ai/settings/usage") });
+
+  registry.addProvider (
       { QStringLiteral ("kimi-code"),
         QStringLiteral ("Kimi Code"),
         SourceType::OfficialApi,

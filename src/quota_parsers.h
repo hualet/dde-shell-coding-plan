@@ -8,7 +8,7 @@
 #include <QJsonObject>
 #include <QString>
 
-// Pure JSON -> QuotaSnapshot parsers for the four vendors' official usage
+// Pure JSON -> QuotaSnapshot parsers for the vendors' official usage
 // endpoints. Each parser fills a copy of the given template snapshot (which
 // already carries providerId/name/consoleUrl/source) and sets ratios, texts,
 // status, message and resetAt. On failure the returned snapshot carries an
@@ -27,6 +27,13 @@ qint64 jwtExpirySeconds (const QString &jwt);
 
 QuotaSnapshot parseCodexUsage (const QJsonObject &root,
                                const QuotaSnapshot &snapshot);
+QuotaSnapshot parseClaudeUsage (const QJsonObject &root,
+                                const QuotaSnapshot &snapshot);
+// Claude Desktop's plan-usage-history.json: the latest sample with readings.
+// updatedAt is the sample time, not now, so stale files show as stale.
+QuotaSnapshot parseClaudeDesktopHistory (const QJsonObject &root,
+                                         const QuotaSnapshot &snapshot,
+                                         const QDateTime &now);
 QuotaSnapshot parseKimiUsages (const QJsonObject &root,
                                const QuotaSnapshot &snapshot);
 QuotaSnapshot parseGlmQuotaLimit (const QJsonObject &root,

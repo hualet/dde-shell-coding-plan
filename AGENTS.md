@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quotas (Codex, Kimi Code, GLM Coding, MiniMax) in the deepin taskbar. Quotas are fetched **directly from the vendors' official usage APIs** using credentials read from local coding-agent CLI config files (the approach used by orca and magpie) — no browser extension is involved. Accounts come from two sources:
+DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quotas (Codex, Claude, Kimi Code, GLM Coding, MiniMax) in the deepin taskbar. Quotas are fetched **directly from the vendors' official usage APIs** using credentials read from local coding-agent CLI config files (the approach used by orca and magpie) — no browser extension is involved. Accounts come from two sources:
 
-- **Auto-detected**: sign-ins of the Codex / Kimi Code / ZCode (GLM) CLIs found on this machine.
+- **Auto-detected**: sign-ins of the Codex / Claude Code / Kimi Code / ZCode (GLM) CLIs found on this machine, plus Claude Desktop's on-disk usage samples.
 - **Manual**: user-pasted API keys (MiniMax, GLM, Kimi Code support key-based quota queries; multiple accounts per vendor are allowed).
 
 ## Architecture
@@ -12,9 +12,9 @@ DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quot
 - `src/codingplanapplet.h/cpp` — DDE Shell `DApplet` subclass, entry point. Creates `CodingPlanModel`, starts auto-refresh.
 - `src/codingplanmodel.h/cpp` — QML-facing model. Tracks **entries** (auto-detected CLI accounts + manually added API-key accounts), one `QuotaSnapshot` per entry, persisted via QSettings (`snapshots`) plus a `manualAccounts` list. Manual API keys live in an owner-only JSON file (`$XDG_CONFIG_HOME/dde-shell-coding-plan/provider-keys.json`), never in QSettings. Adaptive auto-refresh: every 1 min while any quota reading changes, +30 s per round without change, capped at 5 min (failures count as no change); on a non-auth refresh failure a good snapshot whose last *success* is under 30 minutes old is kept with the error as its message (stale-keep policy; `updatedAt` is not bumped, AuthError is never masked). Settings are written only by the model itself, so there is no file watcher. Credential detection is injectable via `setCredentialProbe` for tests.
 - `src/direct_quota_provider.h/cpp` — async HTTP fetcher (QNetworkAccessManager, 30 s per-request timeout). Reads credentials through `CredentialStore`, calls each vendor's usage endpoint, maps HTTP 401/403→AuthError, 429→RateLimited; connection errors and timeouts may fail over to a second host. A refresh of an entry whose request is still pending is ignored (protects the rotating Codex refresh token). Also owns the Codex OAuth token refresh (POST `auth.openai.com/oauth/token` with the Codex CLI client id) and writes rotated tokens atomically back to `~/.codex/auth.json`, preserving all other fields. It refuses to refresh when `auth.json` is not writable, and a failed write-back or a 4xx from the token endpoint is an AuthError.
-- `src/credential_store.h/cpp` — read-only access to CLI credential files: `$CODEX_HOME/auth.json`, `$KIMI_CODE_HOME/credentials/kimi-code.json` (default `~/.kimi-code/...`), `~/.zcode/v2/config.json` (+ `setting.json` to find the active `builtin:*-coding-plan` provider). **Read-only policy**: only Codex tokens are ever written back.
+- `src/credential_store.h/cpp` — read-only access to CLI credential files: `$CODEX_HOME/auth.json`, `$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/...`), `$XDG_CONFIG_HOME/Claude/plan-usage-history.json` (Claude Desktop), `$KIMI_CODE_HOME/credentials/kimi-code.json` (default `~/.kimi-code/...`), `~/.zcode/v2/config.json` (+ `setting.json` to find the active `builtin:*-coding-plan` provider). **Read-only policy**: only Codex tokens are ever written back.
 - `src/quota_parsers.h/cpp` — pure JSON→`QuotaSnapshot` parsers per vendor (unit-tested against fixture replies). Shared helpers: used-percent→remaining-ratio clamping, epoch seconds/ms adaptation (1e10 threshold), JWT exp decoding.
-- `src/providerregistry.h/cpp` — static provider definitions (`codex`, `kimi-code`, `glm-coding`, `minimax`) with `loginUrl`, `consoleUrl`, `SourceType::OfficialApi`. Also defines `QuotaSnapshot`, `SnapshotStatus`, `PanelSeverity` enums.
+- `src/providerregistry.h/cpp` — static provider definitions (`codex`, `claude`, `kimi-code`, `glm-coding`, `minimax`) with `loginUrl`, `consoleUrl`, `SourceType::OfficialApi`. Also defines `QuotaSnapshot`, `SnapshotStatus`, `PanelSeverity` enums.
 - `package/main.qml` — panel ring + popup UI. Per-account cards (manual accounts show a label and a remove button), an "add account" form (vendor + label + API key), no WebEngine.
 
 ### Vendor endpoints & credentials
@@ -22,13 +22,15 @@ DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quot
 | Provider | Credentials | Endpoint |
 |---|---|---|
 | codex (auto) | `~/.codex/auth.json` → `tokens.{access_token, refresh_token, account_id}` | `GET https://chatgpt.com/backend-api/wham/usage` with `Authorization: Bearer`, `chatgpt-account-id`, `OpenAI-Beta: responses=experimental`, `originator: codex_cli_rs`, UA `codex_cli_rs/…` |
+| claude (auto, CLI) | `~/.claude/.credentials.json` → `claudeAiOauth.{accessToken, expiresAt(ms), subscriptionType}` (read-only; expired → ask the user to rerun claude, or fall back to Desktop) | `GET https://api.anthropic.com/api/oauth/usage` with Bearer + `anthropic-beta: oauth-2025-04-20`; `five_hour`/`seven_day.{utilization %, resets_at}` |
+| claude (auto, Desktop fallback) | none — `~/.config/Claude/plan-usage-history.json`, latest `samples[].u.{fh, sd}` (5h / 7d used %, no reset time); `updatedAt` = sample time `t`, flagged stale after 1 h | no network |
 | kimi-code (auto) | `~/.kimi-code/credentials/kimi-code.json` → `access_token` (read-only; expired → ask the user to rerun the kimi CLI) | `GET https://api.kimi.com/coding/v1/usages` with Bearer |
 | kimi-code (manual) | user API key | same endpoint, Bearer key |
 | glm-coding (auto) | `~/.zcode/v2/config.json` → active `builtin:*-coding-plan` `options.apiKey`; host from its `baseURL` | `GET {root}/api/monitor/usage/quota/limit` with the **bare key** in `Authorization` (no Bearer), `Accept-Language: en-US,en` |
 | glm-coding (manual) | user API key | same endpoint, default host `open.bigmodel.cn`, failover `api.z.ai` (same path) on network errors/timeouts only |
 | minimax (manual) | user API key | `GET https://api.minimaxi.com/v1/token_plan/remains` with Bearer (HTTP 200 + `base_resp.status_code==1004` means auth failure) |
 
-Provider IDs `"codex"`, `"kimi-code"`, `"glm-coding"`, `"minimax"` are used identically across model, fetcher and registry.
+Provider IDs `"codex"`, `"claude"`, `"kimi-code"`, `"glm-coding"`, `"minimax"` are used identically across model, fetcher and registry.
 
 ## Build & Test
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QJsonObject>
 #include <QString>
 
 // Credentials are read from the local coding-agent CLI config files, the way
@@ -28,6 +29,14 @@ struct KimiCredentials
   bool present = false;
 };
 
+struct ClaudeCredentials
+{
+  QString accessToken;
+  QString subscriptionType; // "pro", "max", ...
+  qint64 expiresAtMs = 0;
+  bool present = false;
+};
+
 struct GlmPlanCredentials
 {
   QString apiKey;
@@ -39,11 +48,15 @@ namespace CredentialStore
 {
 QString codexAuthPath ();
 QString kimiCredentialsPath ();
+QString claudeCredentialsPath ();
+QString claudeDesktopUsagePath ();
 QString zcodeConfigPath ();
 QString zcodeSettingPath ();
 
 CodexCredentials readCodexCredentials (const QString &path);
 KimiCredentials readKimiCredentials (const QString &path);
+ClaudeCredentials readClaudeCredentials (const QString &path);
+QJsonObject readJsonFile (const QString &path);
 GlmPlanCredentials readGlmPlanFromZCode (const QString &configPath,
                                          const QString &settingPath = QString ());
 }

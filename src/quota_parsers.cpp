@@ -251,6 +251,108 @@ QuotaParsers::parseCodexUsage (const QJsonObject &root,
 }
 
 QuotaSnapshot
+QuotaParsers::parseClaudeUsage (const QJsonObject &root,
+                                const QuotaSnapshot &snapshot)
+{
+  QuotaSnapshot result = snapshot;
+
+  // {"five_hour": {"utilization": 13.0, "resets_at": "...+00:00"},
+  //  "seven_day": {...}, ...}; a window is null when it has not started.
+  const auto parseWindow = [](const QJsonObject &object) {
+    Window window;
+    const double utilization = numberOrNaN (
+        object.value (QStringLiteral ("utilization")));
+    if (std::isnan (utilization))
+      {
+        return window;
+      }
+    window.usedPercent = clampPercent (utilization);
+    window.resetAt = QDateTime::fromString (
+        object.value (QStringLiteral ("resets_at")).toString (), Qt::ISODateWithMs);
+    window.valid = true;
+    return window;
+  };
+
+  const Window session = parseWindow (
+      root.value (QStringLiteral ("five_hour")).toObject ());
+  const Window weekly = parseWindow (
+      root.value (QStringLiteral ("seven_day")).toObject ());
+  if (!session.valid && !weekly.valid)
+    {
+      result.status = SnapshotStatus::ParseError;
+      result.message = QStringLiteral ("Claude 响应中没有额度窗口。");
+      return result;
+    }
+
+  applyWindow (result, session, true);
+  applyWindow (result, weekly, false);
+  result.status = SnapshotStatus::Ok;
+  result.updatedAt = QDateTime::currentDateTimeUtc ();
+  return result;
+}
+
+QuotaSnapshot
+QuotaParsers::parseClaudeDesktopHistory (const QJsonObject &root,
+                                         const QuotaSnapshot &snapshot,
+                                         const QDateTime &now)
+{
+  QuotaSnapshot result = snapshot;
+
+  // {"version": 2, "samples": [{"t": <ms>, "org": "...", "u": {"fh": 13, "sd": 6}}]}
+  // fh / sd are the five-hour and seven-day utilization percentages.
+  const QJsonArray samples = root.value (QStringLiteral ("samples")).toArray ();
+  QJsonObject latest;
+  qint64 latestTime = 0;
+  for (const QJsonValue &value : samples)
+    {
+      const QJsonObject sample = value.toObject ();
+      const QJsonObject usage = sample.value (QStringLiteral ("u")).toObject ();
+      const qint64 time = static_cast<qint64> (
+          sample.value (QStringLiteral ("t")).toDouble (0));
+      if ((usage.contains (QStringLiteral ("fh")) || usage.contains (QStringLiteral ("sd")))
+          && time >= latestTime)
+        {
+          latest = usage;
+          latestTime = time;
+        }
+    }
+  if (latest.isEmpty ())
+    {
+      result.status = SnapshotStatus::ParseError;
+      result.message = QStringLiteral ("Claude 桌面版尚未记录额度。");
+      return result;
+    }
+
+  const auto window = [&latest](const QString &key) {
+    Window parsed;
+    const double percent = numberOrNaN (latest.value (key));
+    if (!std::isnan (percent))
+      {
+        parsed.usedPercent = clampPercent (percent);
+        parsed.valid = true;
+      }
+    return parsed;
+  };
+  applyWindow (result, window (QStringLiteral ("fh")), true);
+  applyWindow (result, window (QStringLiteral ("sd")), false);
+
+  result.updatedAt = epochToDateTime (latestTime);
+  result.status = SnapshotStatus::Ok;
+  // Desktop samples every ~15 minutes while it runs; older data is suspect.
+  if (result.updatedAt.isValid () && result.updatedAt.secsTo (now) > 60 * 60)
+    {
+      result.message = QStringLiteral ("来自 Claude 桌面版 %1 的记录，可能已过期")
+                           .arg (result.updatedAt.toLocalTime ().toString (
+                               QStringLiteral ("MM-dd HH:mm")));
+    }
+  else
+    {
+      result.message = QStringLiteral ("来自 Claude 桌面版");
+    }
+  return result;
+}
+
+QuotaSnapshot
 QuotaParsers::parseKimiUsages (const QJsonObject &root,
                                const QuotaSnapshot &snapshot)
 {

@@ -74,6 +74,7 @@ private:
                 const QByteArray &body, const QString &failoverUrl,
                 const JsonHandler &handler);
   void fetchCodex (const QuotaRequest &request);
+  void fetchClaude (const QuotaRequest &request);
   void fetchKimi (const QuotaRequest &request);
   void fetchGlm (const QuotaRequest &request, const QString &key,
                  const QString &rootUrl, const QString &failoverRoot);

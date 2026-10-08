@@ -28,6 +28,10 @@ constexpr auto kCodexClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
 constexpr auto kCodexVersion = "0.55.0";
 constexpr auto kCodexUserAgent = "codex_cli_rs/0.55.0 (Linux x86_64) xterm-256color";
 
+// Claude Code's OAuth token reads the same usage the claude.ai settings show.
+constexpr auto kClaudeUsageUrl = "https://api.anthropic.com/api/oauth/usage";
+constexpr auto kClaudeOAuthBeta = "oauth-2025-04-20";
+
 constexpr auto kKimiUsageUrl = "https://api.kimi.com/coding/v1/usages";
 constexpr auto kMinimaxRemainsUrl = "https://api.minimaxi.com/v1/token_plan/remains";
 constexpr auto kMinimaxRemainsUrlIntl = "https://api.minimax.io/v1/token_plan/remains";
@@ -66,8 +70,8 @@ DirectQuotaProvider::DirectQuotaProvider (QObject *parent)
 QStringList
 DirectQuotaProvider::detectableProviderIds ()
 {
-  return { QStringLiteral ("codex"), QStringLiteral ("kimi-code"),
-           QStringLiteral ("glm-coding") };
+  return { QStringLiteral ("codex"), QStringLiteral ("claude"),
+           QStringLiteral ("kimi-code"), QStringLiteral ("glm-coding") };
 }
 
 bool
@@ -78,6 +82,12 @@ DirectQuotaProvider::credentialsPresent (const QString &providerId)
       const CodexCredentials credentials = CredentialStore::readCodexCredentials (
           CredentialStore::codexAuthPath ());
       return credentials.present && !credentials.apiKeyMode;
+    }
+  if (providerId == QStringLiteral ("claude"))
+    {
+      return CredentialStore::readClaudeCredentials (
+                 CredentialStore::claudeCredentialsPath ()).present
+          || QFile::exists (CredentialStore::claudeDesktopUsagePath ());
     }
   if (providerId == QStringLiteral ("kimi-code"))
     {
@@ -157,6 +167,10 @@ DirectQuotaProvider::refreshEntry (const QuotaRequest &request)
   if (request.providerId == QStringLiteral ("codex"))
     {
       fetchCodex (request);
+    }
+  else if (request.providerId == QStringLiteral ("claude"))
+    {
+      fetchClaude (request);
     }
   else if (request.providerId == QStringLiteral ("kimi-code"))
     {
@@ -450,6 +464,58 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
                  return;
                }
              requestUsage (accessToken);
+           });
+}
+
+void
+DirectQuotaProvider::fetchClaude (const QuotaRequest &request)
+{
+  // Read-only policy: Claude Code owns its OAuth tokens (a rotated refresh
+  // token would log it out), and Claude Desktop's tokens are encrypted in
+  // its own store. Prefer the live API through a valid Claude Code token,
+  // else fall back to the usage Claude Desktop last sampled to disk.
+  const ClaudeCredentials credentials = CredentialStore::readClaudeCredentials (
+      CredentialStore::claudeCredentialsPath ());
+  const bool expired = credentials.expiresAtMs > 0
+      && credentials.expiresAtMs - QDateTime::currentMSecsSinceEpoch () <= 5000;
+
+  if (!credentials.present || expired)
+    {
+      const QString desktopPath = CredentialStore::claudeDesktopUsagePath ();
+      if (QFile::exists (desktopPath))
+        {
+          finish (request, QuotaParsers::parseClaudeDesktopHistory (
+                               CredentialStore::readJsonFile (desktopPath),
+                               snapshotTemplate (request),
+                               QDateTime::currentDateTimeUtc ()));
+          return;
+        }
+      emit refreshFailed (request.entryId,
+                          expired
+                              ? QStringLiteral ("Claude Code 登录已过期，请运行一次 claude 刷新登录。")
+                              : QStringLiteral ("未检测到 Claude Code 或 Claude 桌面版登录。"),
+                          SnapshotStatus::AuthError);
+      return;
+    }
+
+  QNetworkRequest networkRequest (QUrl (QString::fromLatin1 (kClaudeUsageUrl)));
+  networkRequest.setRawHeader (QByteArrayLiteral ("Authorization"),
+                               (QStringLiteral ("Bearer ") + credentials.accessToken).toUtf8 ());
+  networkRequest.setRawHeader (QByteArrayLiteral ("anthropic-beta"),
+                               QByteArrayLiteral (kClaudeOAuthBeta));
+  networkRequest.setAttribute (QNetworkRequest::RedirectPolicyAttribute,
+                               QNetworkRequest::NoLessSafeRedirectPolicy);
+
+  const QString plan = credentials.subscriptionType;
+  execute (request, networkRequest, Verb::Get, QByteArray (), QString (),
+           [this, plan](const QuotaRequest &req, int, const QJsonObject &json) {
+             QuotaSnapshot snapshot = QuotaParsers::parseClaudeUsage (
+                 json, snapshotTemplate (req));
+             if (snapshot.status == SnapshotStatus::Ok)
+               {
+                 snapshot.message = plan;
+               }
+             finish (req, snapshot);
            });
 }
 

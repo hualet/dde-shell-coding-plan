@@ -41,6 +41,7 @@ private slots:
   // Credential readers
   void codexCredentialsReaderHandlesModes ();
   void kimiCredentialsReaderCoercesSeconds ();
+  void claudeCredentialsReaderReadsOAuthBlock ();
   void zcodeReaderPicksActiveCodingPlanKey ();
   void zcodeReaderFallsBackToAnyCodingPlanKey ();
 
@@ -49,6 +50,10 @@ private slots:
   void codexParserSwapsWindowRolesByDuration ();
   void codexParserRejectsEmptyRateLimit ();
   void codexParserClassifiesLoneWindowByLength ();
+  void claudeParserMapsWindows ();
+  void claudeParserRejectsEmptyReply ();
+  void claudeDesktopHistoryUsesLatestSample ();
+  void claudeDesktopHistoryFlagsStaleSample ();
   void kimiParserMapsWeeklyAndSession ();
   void kimiParserHandlesStringNumbers ();
   void glmParserMapsUnitWindows ();
@@ -90,6 +95,7 @@ private slots:
   void directProviderUsesOfficialEndpoints ();
   void directProviderSendsCodexCliIdentity ();
   void kimiPolicyIsReadOnly ();
+  void claudePolicyIsReadOnly ();
   void directProviderFailsOverToFullGlmUrl ();
   void directProviderGuardsCodexTokenRotation ();
   void directProviderClearsInFlightOnSyncFailure ();
@@ -180,8 +186,9 @@ ProviderRegistryTest::builtInProvidersCoverMvpPlatforms ()
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
 
   const QStringList providerIds = registry.providerIds ();
-  QCOMPARE (providerIds.size (), 4);
+  QCOMPARE (providerIds.size (), 5);
   QVERIFY (providerIds.contains (QStringLiteral ("codex")));
+  QVERIFY (providerIds.contains (QStringLiteral ("claude")));
   QVERIFY (providerIds.contains (QStringLiteral ("kimi-code")));
   QVERIFY (providerIds.contains (QStringLiteral ("glm-coding")));
   QVERIFY (providerIds.contains (QStringLiteral ("minimax")));
@@ -319,6 +326,24 @@ ProviderRegistryTest::kimiCredentialsReaderCoercesSeconds ()
 }
 
 void
+ProviderRegistryTest::claudeCredentialsReaderReadsOAuthBlock ()
+{
+  QTemporaryDir dir;
+  const QString path = dir.filePath (QStringLiteral (".credentials.json"));
+  writeFile (path, R"({"claudeAiOauth": {"accessToken": "ct", "refreshToken": "rt", "expiresAt": 1790782108123, "scopes": ["user:inference"], "subscriptionType": "max"}})");
+  const ClaudeCredentials credentials = CredentialStore::readClaudeCredentials (path);
+  QVERIFY (credentials.present);
+  QCOMPARE (credentials.accessToken, QStringLiteral ("ct"));
+  QCOMPARE (credentials.subscriptionType, QStringLiteral ("max"));
+  QCOMPARE (credentials.expiresAtMs, qint64 (1790782108123));
+
+  writeFile (path, R"({"claudeAiOauth": {"expiresAt": 1790782108}})");
+  const ClaudeCredentials empty = CredentialStore::readClaudeCredentials (path);
+  QVERIFY (!empty.present);
+  QCOMPARE (empty.expiresAtMs, qint64 (1790782108000));
+}
+
+void
 ProviderRegistryTest::zcodeReaderPicksActiveCodingPlanKey ()
 {
   QTemporaryDir dir;
@@ -442,6 +467,77 @@ ProviderRegistryTest::codexParserClassifiesLoneWindowByLength ()
       QuotaSnapshot ());
   QCOMPARE (sessionOnly.fiveHourRemainingRatio, 0.75);
   QVERIFY (sessionOnly.remainingRatio < 0);
+}
+
+void
+ProviderRegistryTest::claudeParserMapsWindows ()
+{
+  const QJsonObject root = parseJson (R"({
+    "five_hour": {"utilization": 13.0, "resets_at": "2026-10-08T12:00:00.517301+00:00"},
+    "seven_day": {"utilization": 6.0, "resets_at": "2026-10-13T03:00:00.517322+00:00"},
+    "seven_day_opus": null
+  })");
+  const QuotaSnapshot snapshot = QuotaParsers::parseClaudeUsage (root, QuotaSnapshot ());
+  QCOMPARE (snapshot.status, SnapshotStatus::Ok);
+  QCOMPARE (snapshot.fiveHourRemainingRatio, 0.87);
+  QCOMPARE (snapshot.remainingRatio, 0.94);
+  QCOMPARE (snapshot.fiveHourBalanceText, QStringLiteral ("87%"));
+  // The 5-hour reset wins; microsecond fractions still parse.
+  QCOMPARE (snapshot.resetAt.toUTC (),
+            QDateTime (QDate (2026, 10, 8), QTime (12, 0, 0, 517), QTimeZone::utc ()));
+
+  // A window that has not started yet is null.
+  const QuotaSnapshot weeklyOnly = QuotaParsers::parseClaudeUsage (
+      parseJson (R"({"five_hour": null, "seven_day": {"utilization": 50, "resets_at": null}})"),
+      QuotaSnapshot ());
+  QCOMPARE (weeklyOnly.status, SnapshotStatus::Ok);
+  QCOMPARE (weeklyOnly.remainingRatio, 0.5);
+  QVERIFY (weeklyOnly.fiveHourRemainingRatio < 0);
+}
+
+void
+ProviderRegistryTest::claudeParserRejectsEmptyReply ()
+{
+  const QuotaSnapshot snapshot = QuotaParsers::parseClaudeUsage (
+      parseJson (R"({"five_hour": null, "seven_day": null})"), QuotaSnapshot ());
+  QCOMPARE (snapshot.status, SnapshotStatus::ParseError);
+}
+
+void
+ProviderRegistryTest::claudeDesktopHistoryUsesLatestSample ()
+{
+  const QJsonObject root = parseJson (R"({"version": 2, "samples": [
+    {"t": 1791447489472, "org": "o", "u": {"fh": 40, "sd": 20}},
+    {"t": 1791448388886, "org": "o", "u": {"fh": 13, "sd": 6}},
+    {"t": 1791448400000, "org": "o", "u": {}}
+  ]})");
+  const QDateTime now = QDateTime::fromMSecsSinceEpoch (1791448500000, QTimeZone::utc ());
+  const QuotaSnapshot snapshot = QuotaParsers::parseClaudeDesktopHistory (
+      root, QuotaSnapshot (), now);
+  QCOMPARE (snapshot.status, SnapshotStatus::Ok);
+  QCOMPARE (snapshot.fiveHourRemainingRatio, 0.87);
+  QCOMPARE (snapshot.remainingRatio, 0.94);
+  // updatedAt is when Desktop sampled, not when we read the file.
+  QCOMPARE (snapshot.updatedAt.toMSecsSinceEpoch (), qint64 (1791448388886));
+  QVERIFY (!snapshot.message.contains (QStringLiteral ("过期")));
+
+  const QuotaSnapshot empty = QuotaParsers::parseClaudeDesktopHistory (
+      parseJson (R"({"version": 2, "samples": [{"t": 1, "u": {}}]})"),
+      QuotaSnapshot (), now);
+  QCOMPARE (empty.status, SnapshotStatus::ParseError);
+}
+
+void
+ProviderRegistryTest::claudeDesktopHistoryFlagsStaleSample ()
+{
+  const QJsonObject root = parseJson (R"({"samples": [{"t": 1791448388886, "u": {"fh": 13}}]})");
+  const QDateTime now = QDateTime::fromMSecsSinceEpoch (1791448388886 + 2 * 3600 * 1000,
+                                                        QTimeZone::utc ());
+  const QuotaSnapshot snapshot = QuotaParsers::parseClaudeDesktopHistory (
+      root, QuotaSnapshot (), now);
+  QCOMPARE (snapshot.status, SnapshotStatus::Ok);
+  QVERIFY (snapshot.message.contains (QStringLiteral ("过期")));
+  QVERIFY (snapshot.remainingRatio < 0);
 }
 
 void
@@ -1155,6 +1251,8 @@ ProviderRegistryTest::directProviderUsesOfficialEndpoints ()
   QVERIFY (source.contains (QStringLiteral ("https://auth.openai.com/oauth/token")));
   QVERIFY (source.contains (QStringLiteral ("app_EMoamEEZ73f0CkXaXp7hrann")));
   QVERIFY (source.contains (QStringLiteral ("https://api.kimi.com/coding/v1/usages")));
+  QVERIFY (source.contains (QStringLiteral ("https://api.anthropic.com/api/oauth/usage")));
+  QVERIFY (source.contains (QStringLiteral ("oauth-2025-04-20")));
   QVERIFY (source.contains (QStringLiteral ("/api/monitor/usage/quota/limit")));
   QVERIFY (source.contains (QStringLiteral (
       "https://api.minimaxi.com/v1/token_plan/remains")));
@@ -1182,6 +1280,22 @@ ProviderRegistryTest::kimiPolicyIsReadOnly ()
                                         source.indexOf (QStringLiteral ("fetchGlm"))
                                             - source.indexOf (QStringLiteral ("fetchKimi")));
   QVERIFY (!kimiFetch.contains (QStringLiteral ("write")));
+}
+
+void
+ProviderRegistryTest::claudePolicyIsReadOnly ()
+{
+  const QString source = readFile (
+      QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
+  // Claude Code owns its OAuth tokens; never refresh or write them.
+  QVERIFY (source.contains (QStringLiteral ("请运行一次 claude 刷新登录")));
+  const int start = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchClaude"));
+  const int end = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchKimi"));
+  QVERIFY (start > 0 && end > start);
+  const QString claudeFetch = source.mid (start, end - start);
+  QVERIFY (!claudeFetch.contains (QStringLiteral ("write")));
+  QVERIFY (!claudeFetch.contains (QStringLiteral ("Verb::Post")));
+  QVERIFY (!claudeFetch.contains (QStringLiteral ("refreshToken")));
 }
 
 void
