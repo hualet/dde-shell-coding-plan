@@ -26,6 +26,10 @@ AppletItem {
     readonly property color ringTextColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(0, 0, 0, 0.9)
     readonly property color ringTrackColor: root.isDarkTheme ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
     readonly property color errorRingColor: "#ef4444"
+    // Some sources answer instantly; keep the busy state visible briefly so
+    // a click always shows that it did something.
+    property bool refreshHold: false
+    readonly property bool refreshBusy: refreshHold || (Applet.quota ? Applet.quota.refreshing : false)
 
     readonly property real ringSize: dockSize * 3 / 5
     readonly property real ringsExtent: visibleRingCount * ringSize + (visibleRingCount - 1) * 4 + 16
@@ -99,8 +103,47 @@ AppletItem {
 
     function refreshAll() {
         if (Applet.quota) {
+            root.refreshHold = true
+            refreshHoldTimer.restart()
             Applet.quota.refreshAll()
         }
+    }
+
+    Timer {
+        id: refreshHoldTimer
+        interval: 600
+        onTriggered: root.refreshHold = false
+    }
+
+    function formatTime(value, withSeconds) {
+        if (!value)
+            return ""
+        const date = new Date(value)
+        if (isNaN(date.getTime()))
+            return ""
+        const time = withSeconds ? "HH:mm:ss" : "HH:mm"
+        return date.toDateString() === new Date().toDateString()
+            ? Qt.formatDateTime(date, time)
+            : Qt.formatDateTime(date, "MM-dd " + time)
+    }
+
+    function isErrorStatus(snapshot) {
+        return ["auth_error", "rate_limited", "unsupported", "parse_error", "network_error"]
+            .indexOf(snapshot.status) >= 0
+    }
+
+    function cardStatusText(snapshot) {
+        if (snapshot.refreshing)
+            return qsTr("刷新中…")
+        if (root.isErrorStatus(snapshot))
+            return snapshot.message || qsTr("读取失败")
+        const parts = []
+        const updated = root.formatTime(snapshot.updatedAt, false)
+        if (updated.length > 0)
+            parts.push(qsTr("更新于 %1").arg(updated))
+        if (snapshot.message)
+            parts.push(snapshot.message)
+        return parts.join(" · ")
     }
 
     PanelToolTip {
@@ -410,14 +453,38 @@ AppletItem {
                                     }
                                 }
 
+                                Label {
+                                    Layout.fillWidth: true
+                                    visible: text.length > 0
+                                    text: root.cardStatusText(modelData)
+                                    font.pixelSize: 11
+                                    color: root.isErrorStatus(modelData) && !modelData.refreshing
+                                        ? root.errorRingColor
+                                        : root.secondaryTextColor
+                                    wrapMode: Text.Wrap
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+
                             }
                     }
                 }
 
                 Button {
                     Layout.fillWidth: true
-                    text: qsTr("刷新全部")
+                    text: root.refreshBusy ? qsTr("刷新中…") : qsTr("刷新全部")
+                    enabled: !root.refreshBusy
                     onClicked: root.refreshAll()
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    readonly property string lastRefresh: Applet.quota
+                        ? root.formatTime(Applet.quota.lastRefreshAt, true) : ""
+                    visible: lastRefresh.length > 0 && !root.refreshBusy
+                    text: qsTr("上次刷新 %1").arg(lastRefresh)
+                    font.pixelSize: 11
+                    color: root.secondaryTextColor
+                    horizontalAlignment: Text.AlignHCenter
                 }
 
                 ColumnLayout {

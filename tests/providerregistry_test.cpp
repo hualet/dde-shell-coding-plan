@@ -84,6 +84,7 @@ private slots:
   void snapshotsPersistResetAndCounts ();
   void modelAutoRefreshIsCppSide ();
   void autoRefreshBacksOffUntilQuotaChanges ();
+  void refreshExposesBusyStateAndCompletionTime ();
 
   // Panel / build structure contracts
   void panelQmlLeftClickOpensStatusPopup ();
@@ -119,6 +120,8 @@ ProviderRegistryTest::initTestCase ()
   // Redirect everything the model persists (QSettings file, provider key
   // store) into a sandbox before the first QSettings/QStandardPaths use.
   qputenv ("XDG_CONFIG_HOME", m_sandbox->path ().toUtf8 ());
+  // Keep a real Claude Code login out of the Claude refresh tests.
+  qputenv ("CLAUDE_CONFIG_DIR", m_sandbox->filePath (QStringLiteral ("claude")).toUtf8 ());
   QSettings::setPath (QSettings::NativeFormat, QSettings::UserScope,
                       m_sandbox->path ());
   qRegisterMetaType<SnapshotStatus> ();
@@ -781,6 +784,40 @@ ProviderRegistryTest::codexTokenWriteBackPreservesFieldsAndPermissions ()
 // ---------------------------------------------------------------------------
 
 void
+ProviderRegistryTest::refreshExposesBusyStateAndCompletionTime ()
+{
+  resetPersistence ();
+  // Claude Desktop's sample file answers synchronously, without network.
+  QVERIFY (QDir (m_sandbox->path ()).mkpath (QStringLiteral ("Claude")));
+  writeFile (CredentialStore::claudeDesktopUsagePath (),
+             QStringLiteral (R"({"samples": [{"t": %1, "u": {"fh": 20, "sd": 10}}]})")
+                 .arg (QDateTime::currentMSecsSinceEpoch ()));
+
+  CodingPlanModel model;
+  model.setCredentialProbe ([](const QString &id) { return id == QStringLiteral ("claude"); });
+  QVERIFY (!model.refreshing ());
+  QVERIFY (!model.lastRefreshAt ().isValid ());
+  QCOMPARE (model.snapshots ().first ().toMap ().value (QStringLiteral ("refreshing")).toBool (),
+            false);
+
+  QList<bool> seen;
+  connect (&model, &CodingPlanModel::refreshingChanged, &model,
+           [&model, &seen]() { seen.append (model.refreshing ()); });
+  model.refreshAll ();
+
+  // It went busy, then idle, and stamped the completion time.
+  QCOMPARE (seen, (QList<bool>{ true, false }));
+  QVERIFY (!model.refreshing ());
+  QVERIFY (model.lastRefreshAt ().isValid ());
+  const QVariantMap snapshot = model.snapshots ().first ().toMap ();
+  QCOMPARE (snapshot.value (QStringLiteral ("refreshing")).toBool (), false);
+  QCOMPARE (snapshot.value (QStringLiteral ("status")).toString (), QStringLiteral ("ok"));
+  QCOMPARE (snapshot.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), 0.8);
+
+  QFile::remove (CredentialStore::claudeDesktopUsagePath ());
+}
+
+void
 ProviderRegistryTest::autoEntriesFollowCredentialProbe ()
 {
   resetPersistence ();
@@ -1189,6 +1226,12 @@ ProviderRegistryTest::panelQmlHasAccountManagement ()
   QVERIFY (qml.contains (QStringLiteral ("removeAccount")));
   QVERIFY (qml.contains (QStringLiteral ("modelData.entryId")));
   QVERIFY (qml.contains (QStringLiteral ("刷新全部")));
+  // Refreshing is visible: busy button, per-card status, last refresh time.
+  QVERIFY (qml.contains (QStringLiteral ("Applet.quota.refreshing")));
+  QVERIFY (qml.contains (QStringLiteral ("snapshot.refreshing")));
+  QVERIFY (qml.contains (QStringLiteral ("刷新中…")));
+  QVERIFY (qml.contains (QStringLiteral ("Applet.quota.lastRefreshAt")));
+  QVERIFY (qml.contains (QStringLiteral ("cardStatusText(modelData)")));
   QVERIFY (qml.contains (QStringLiteral ("未检测到已登录的 Coding CLI")));
 }
 

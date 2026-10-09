@@ -168,8 +168,10 @@ CodingPlanModel::snapshots () const
   QVariantList result;
   for (const Entry &entry : m_entries)
     {
-      result.append (m_snapshots.value (entry.entryId,
-                                        placeholderSnapshot (entry)).toVariantMap ());
+      QVariantMap item = m_snapshots.value (entry.entryId,
+                                            placeholderSnapshot (entry)).toVariantMap ();
+      item.insert (QStringLiteral ("refreshing"), m_refreshing.contains (entry.entryId));
+      result.append (item);
     }
   return result;
 }
@@ -216,6 +218,51 @@ CodingPlanModel::tooltipText () const
   return lines.join (QLatin1Char ('\n'));
 }
 
+bool
+CodingPlanModel::refreshing () const
+{
+  return !m_refreshing.isEmpty ();
+}
+
+QDateTime
+CodingPlanModel::lastRefreshAt () const
+{
+  return m_lastRefreshAt;
+}
+
+void
+CodingPlanModel::startRequests (const QList<QuotaRequest> &requests)
+{
+  if (requests.isEmpty ())
+    {
+      return;
+    }
+  const bool wasRefreshing = refreshing ();
+  for (const QuotaRequest &request : requests)
+    {
+      m_refreshing.insert (request.entryId);
+    }
+  if (!wasRefreshing)
+    {
+      emit refreshingChanged ();
+    }
+  emit snapshotsChanged ();
+  // Some sources (Claude Desktop's file) answer synchronously, inside this
+  // call; finishRequest copes with that.
+  m_provider->refreshAll (requests);
+}
+
+void
+CodingPlanModel::finishRequest (const QString &entryId)
+{
+  if (!m_refreshing.remove (entryId) || refreshing ())
+    {
+      return;
+    }
+  m_lastRefreshAt = QDateTime::currentDateTime ();
+  emit refreshingChanged ();
+}
+
 void
 CodingPlanModel::refreshAll ()
 {
@@ -227,24 +274,22 @@ CodingPlanModel::refreshAll ()
     }
   ensureSnapshots ();
 
-  const QList<QuotaRequest> requests = entryRequests ();
-  if (!requests.isEmpty ())
-    {
-      m_provider->refreshAll (requests);
-    }
+  startRequests (entryRequests ());
 }
 
 void
 CodingPlanModel::refreshProvider (const QString &providerId)
 {
   const QHash<QString, QString> apiKeys = loadApiKeys ();
+  QList<QuotaRequest> requests;
   for (const Entry &entry : m_entries)
     {
       if (entry.providerId == providerId)
         {
-          m_provider->refreshEntry (requestForEntry (entry, apiKeys));
+          requests.append (requestForEntry (entry, apiKeys));
         }
     }
+  startRequests (requests);
 }
 
 void
@@ -296,7 +341,7 @@ CodingPlanModel::addAccount (const QString &providerId, const QString &label,
   emit providersChanged ();
   emit snapshotsChanged ();
 
-  m_provider->refreshEntry (requestForEntry (entry, loadApiKeys ()));
+  startRequests ({ requestForEntry (entry, loadApiKeys ()) });
 }
 
 void
@@ -775,6 +820,7 @@ void
 CodingPlanModel::onRefreshCompleted (const QString &entryId,
                                      const QuotaSnapshot &snapshot)
 {
+  finishRequest (entryId);
   if (entryIndex (entryId) < 0)
     {
       return;
@@ -799,6 +845,7 @@ void
 CodingPlanModel::onRefreshFailed (const QString &entryId, const QString &message,
                                   SnapshotStatus status)
 {
+  finishRequest (entryId);
   const int index = entryIndex (entryId);
   if (index < 0)
     {

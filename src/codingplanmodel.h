@@ -6,8 +6,10 @@
 #include "direct_quota_provider.h"
 #include "providerregistry.h"
 
+#include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 
@@ -26,6 +28,8 @@ class CodingPlanModel : public QObject
   Q_PROPERTY (QVariantList snapshots READ snapshots NOTIFY snapshotsChanged)
   Q_PROPERTY (bool hasSubscriptions READ hasSubscriptions NOTIFY snapshotsChanged)
   Q_PROPERTY (QString tooltipText READ tooltipText NOTIFY snapshotsChanged)
+  Q_PROPERTY (bool refreshing READ refreshing NOTIFY refreshingChanged)
+  Q_PROPERTY (QDateTime lastRefreshAt READ lastRefreshAt NOTIFY refreshingChanged)
 
 public:
   explicit CodingPlanModel (QObject *parent = nullptr);
@@ -35,6 +39,10 @@ public:
   QVariantList snapshots () const;
   bool hasSubscriptions () const;
   QString tooltipText () const;
+  // True while any entry has a request pending; lastRefreshAt is when the
+  // last round finished, so a click that changes no number still shows.
+  bool refreshing () const;
+  QDateTime lastRefreshAt () const;
 
   Q_INVOKABLE void refreshAll ();
   Q_INVOKABLE void refreshProvider (const QString &providerId);
@@ -58,6 +66,7 @@ public:
 signals:
   void providersChanged ();
   void snapshotsChanged ();
+  void refreshingChanged ();
 
 private slots:
   void onAutoRefreshTick ();
@@ -83,6 +92,8 @@ private:
   void saveSnapshots () const;
   void saveManualAccounts () const;
   QList<QuotaRequest> entryRequests () const;
+  void startRequests (const QList<QuotaRequest> &requests);
+  void finishRequest (const QString &entryId);
   QuotaRequest requestForEntry (const Entry &entry,
                                 const QHash<QString, QString> &apiKeys) const;
 
@@ -97,6 +108,8 @@ private:
   QList<Entry> m_manualEntries;
   QHash<QString, QuotaSnapshot> m_snapshots;
   QTimer m_autoRefreshTimer;
+  QSet<QString> m_refreshing; // entryIds with a request pending
+  QDateTime m_lastRefreshAt;
   bool m_quotaChangedSinceTick = false;
   DirectQuotaProvider *m_provider = nullptr;
   std::function<bool (const QString &)> m_credentialProbe;
