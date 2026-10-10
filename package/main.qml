@@ -59,7 +59,14 @@ AppletItem {
         return "#aeb6c2"
     }
 
-    function providerInitial(name) {
+    // Ring letters that would collide by name: Claude ("C" like Codex) is
+    // shown by its maker's initial.
+    readonly property var providerInitials: ({ "claude": "A" })
+
+    function providerInitial(snapshot) {
+        if (snapshot && root.providerInitials[snapshot.providerId])
+            return root.providerInitials[snapshot.providerId]
+        const name = snapshot ? snapshot.providerName : ""
         if (!name || name.length === 0)
             return "?"
         return name.charAt(0).toUpperCase()
@@ -282,7 +289,7 @@ AppletItem {
 
             Text {
                 anchors.centerIn: parent
-                text: root.providerInitial(parent.snapshot.providerName)
+                text: root.providerInitial(parent.snapshot)
                 font.pixelSize: Math.max(9, parent.width * 0.35)
                 font.bold: true
                 color: root.ringTextColor

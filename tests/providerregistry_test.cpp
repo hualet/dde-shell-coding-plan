@@ -1265,7 +1265,9 @@ ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
 {
   const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
   QVERIFY (qml.contains (QStringLiteral ("visibleRingCount")));
-  QVERIFY (qml.contains (QStringLiteral ("root.providerInitial(parent.snapshot.providerName)")));
+  QVERIFY (qml.contains (QStringLiteral ("root.providerInitial(parent.snapshot)")));
+  // Claude and Codex would both be "C"; Claude shows "A".
+  QVERIFY (qml.contains (QStringLiteral ("\"claude\": \"A\"")));
 }
 
 void
