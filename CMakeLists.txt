@@ -96,4 +96,9 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME providerregistry_tests COMMAND providerregistry_tests)
+    # QTEST_MAIN links Qt6::Test (→ Qt6::Gui) and therefore needs a platform
+    # plugin; force offscreen so headless runners (dh_auto_test, CI) work.
+    set_tests_properties(providerregistry_tests PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
 endif()
