@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 UnionTech Software Technology Co., Ltd.
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+Source: dde-shell-coding-plan
+Section: utils
+Priority: optional
+Maintainer: HualetWang <mr.asianwang@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               pkg-config,
+               qt6-base-dev,
+               qt6-base-dev-tools,
+               qt6-declarative-dev,
+               qt6-tools-dev,
+               qt6-tools-dev-tools,
+               libdtk6core-dev,
+               libdtk6gui-dev,
+               libdtk6widget-dev,
+               libdde-shell-dev
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/hualet/dde-shell-coding-plan
+
+Package: dde-shell-coding-plan
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         dde-shell
+Description: AI coding plan quota applet for DDE Shell
+ DDE Shell plugin for the taskbar that shows the remaining quota of
+ AI coding plans (Codex, Claude, Kimi Code, GLM Coding, MiniMax),
+ read directly from the vendors' official usage APIs using credentials
+ of the local coding-agent CLIs or user-added API keys.

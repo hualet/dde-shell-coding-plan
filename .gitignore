@@ -30,6 +30,7 @@ ui_*.h
 Makefile*
 *build-*
 build/
+obj-*/
 *.qm
 *.prl
 *.qmlls.ini
@@ -59,5 +60,11 @@ compile_commands.json
 web/node_modules/
 web/dist/
 
-# ZCode 
+# ZCode
 .zcode/
+
+# Package files
+*.tar.gz
+*.deb
+*.buildinfo
+*.changes

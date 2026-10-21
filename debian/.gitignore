@@ -1,0 +1,10 @@
+# dpkg-buildpackage residue
+/.debhelper/
+/dde-shell-coding-plan/
+/*.substvars
+/*.debhelper.log
+/files
+/*.deb
+/*.build
+/*.changes
+/*.buildinfo

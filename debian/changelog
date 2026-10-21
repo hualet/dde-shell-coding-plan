@@ -1,0 +1,7 @@
+dde-shell-coding-plan (0.4.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Add GitHub Actions CI build and tag-triggered deb release workflows.
+
+ -- HualetWang <mr.asianwang@gmail.com>  Wed, 21 Oct 2026 22:44:54 +0800
+
