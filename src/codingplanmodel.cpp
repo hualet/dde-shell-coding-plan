@@ -26,6 +26,7 @@ constexpr auto kSettingsOrganization = "deepin";
 constexpr auto kSettingsApplication = "dde-shell-coding-plan";
 constexpr auto kSnapshotsKey = "snapshots";
 constexpr auto kManualAccountsKey = "manualAccounts";
+constexpr auto kHiddenEntriesKey = "hiddenEntries";
 constexpr auto kProviderKeysFile = "provider-keys.json";
 // Adaptive auto-refresh: poll every minute while quotas move, back off by
 // 30 s per quiet round, never slower than every 5 minutes.
@@ -171,6 +172,8 @@ CodingPlanModel::snapshots () const
       QVariantMap item = m_snapshots.value (entry.entryId,
                                             placeholderSnapshot (entry)).toVariantMap ();
       item.insert (QStringLiteral ("refreshing"), m_refreshing.contains (entry.entryId));
+      item.insert (QStringLiteral ("visible"),
+                   !m_hiddenEntryIds.contains (entry.entryId));
       result.append (item);
     }
   return result;
@@ -188,6 +191,12 @@ CodingPlanModel::tooltipText () const
   QStringList lines;
   for (const Entry &entry : m_entries)
     {
+      // Plans turned off in the settings dialog leave the taskbar entirely,
+      // tooltip included.
+      if (m_hiddenEntryIds.contains (entry.entryId))
+        {
+          continue;
+        }
       const QuotaSnapshot snapshot = m_snapshots.value (
           entry.entryId, placeholderSnapshot (entry));
       QString value = snapshot.message;
@@ -228,6 +237,26 @@ QDateTime
 CodingPlanModel::lastRefreshAt () const
 {
   return m_lastRefreshAt;
+}
+
+void
+CodingPlanModel::setEntryVisible (const QString &entryId, bool visible)
+{
+  const bool currentlyHidden = m_hiddenEntryIds.contains (entryId);
+  if (currentlyHidden == !visible)
+    {
+      return;
+    }
+  if (visible)
+    {
+      m_hiddenEntryIds.remove (entryId);
+    }
+  else
+    {
+      m_hiddenEntryIds.insert (entryId);
+    }
+  saveHiddenEntries ();
+  Q_EMIT snapshotsChanged ();
 }
 
 void
@@ -334,7 +363,7 @@ CodingPlanModel::addAccount (const QString &providerId, const QString &label,
   ensureSnapshots ();
   QuotaSnapshot snapshot = placeholderSnapshot (entry);
   snapshot.status = SnapshotStatus::Authenticated;
-  snapshot.message = QStringLiteral ("已添加，等待读取额度");
+  snapshot.message = tr ("Added, waiting for the first reading");
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   m_snapshots.insert (entry.entryId, snapshot);
   saveSnapshots ();
@@ -506,6 +535,21 @@ CodingPlanModel::rebuildEntries ()
           m_snapshots.remove (key);
         }
     }
+  // And their visibility switches.
+  bool hiddenPruned = false;
+  const QSet<QString> hiddenCopy = m_hiddenEntryIds;
+  for (const QString &id : hiddenCopy)
+    {
+      if (!activeIds.contains (id))
+        {
+          m_hiddenEntryIds.remove (id);
+          hiddenPruned = true;
+        }
+    }
+  if (hiddenPruned)
+    {
+      saveHiddenEntries ();
+    }
   return true;
 }
 
@@ -537,7 +581,7 @@ CodingPlanModel::placeholderSnapshot (const Entry &entry) const
   snapshot.providerName = provider.name;
   snapshot.source = entry.manual ? SourceType::Manual : SourceType::OfficialApi;
   snapshot.status = SnapshotStatus::Authenticated;
-  snapshot.message = QStringLiteral ("等待读取额度");
+  snapshot.message = tr ("Waiting for the first reading");
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   snapshot.consoleUrl = provider.consoleUrl;
   return snapshot;
@@ -643,6 +687,24 @@ CodingPlanModel::loadPersistedState ()
       snapshot.consoleUrl = m_registry.provider (snapshot.providerId).consoleUrl;
       m_snapshots.insert (snapshot.entryId, snapshot);
     }
+
+  // Taskbar visibility per entry ("显示 Plan" switches).
+  m_hiddenEntryIds.clear ();
+  const QStringList hidden = settings.value (
+      QString::fromLatin1 (kHiddenEntriesKey)).toStringList ();
+  for (const QString &id : hidden)
+    {
+      m_hiddenEntryIds.insert (id);
+    }
+}
+
+void
+CodingPlanModel::saveHiddenEntries () const
+{
+  QSettings settings (QString::fromLatin1 (kSettingsOrganization),
+                      QString::fromLatin1 (kSettingsApplication));
+  settings.setValue (QString::fromLatin1 (kHiddenEntriesKey),
+                     QStringList (m_hiddenEntryIds.values ()));
 }
 
 void
@@ -873,7 +935,7 @@ CodingPlanModel::onRefreshFailed (const QString &entryId, const QString &message
   QuotaSnapshot snapshot = placeholderSnapshot (entry);
   snapshot.status = status;
   snapshot.message = message.trimmed ().isEmpty ()
-      ? QStringLiteral ("读取失败，请稍后重试。")
+      ? tr ("Failed to read, please retry later.")
       : message.trimmed ();
   snapshot.updatedAt = QDateTime::currentDateTimeUtc ();
   m_snapshots.insert (entryId, snapshot);

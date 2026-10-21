@@ -43,6 +43,10 @@ public:
   // last round finished, so a click that changes no number still shows.
   bool refreshing () const;
   QDateTime lastRefreshAt () const;
+  // Per-entry taskbar visibility (settings dialog "显示 Plan" switches).
+  // Hidden entry ids persist in the model's own QSettings; snapshots carry
+  // a "visible" flag so the panel can filter its rings.
+  Q_INVOKABLE void setEntryVisible (const QString &entryId, bool visible);
 
   Q_INVOKABLE void refreshAll ();
   Q_INVOKABLE void refreshProvider (const QString &providerId);
@@ -91,6 +95,7 @@ private:
   void loadPersistedState ();
   void saveSnapshots () const;
   void saveManualAccounts () const;
+  void saveHiddenEntries () const;
   QList<QuotaRequest> entryRequests () const;
   void startRequests (const QList<QuotaRequest> &requests);
   void finishRequest (const QString &entryId);
@@ -107,10 +112,12 @@ private:
   QList<Entry> m_entries;
   QList<Entry> m_manualEntries;
   QHash<QString, QuotaSnapshot> m_snapshots;
+  QSet<QString> m_hiddenEntryIds;
   QTimer m_autoRefreshTimer;
   QSet<QString> m_refreshing; // entryIds with a request pending
   QDateTime m_lastRefreshAt;
   bool m_quotaChangedSinceTick = false;
+  bool m_showAllOnTaskbar = false;
   DirectQuotaProvider *m_provider = nullptr;
   std::function<bool (const QString &)> m_credentialProbe;
 };

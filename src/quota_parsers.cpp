@@ -3,10 +3,22 @@
 
 #include "quota_parsers.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QTimeZone>
 #include <cmath>
+
+namespace QuotaParsers
+{
+// Free functions have no QObject base; route user-facing messages through
+// this shim so they land in the "QuotaParsers" translation context.
+struct ParserTr
+{
+  Q_DECLARE_TR_FUNCTIONS (QuotaParsers)
+};
+} // namespace QuotaParsers
 
 namespace
 {
@@ -152,7 +164,7 @@ QuotaParsers::epochToDateTime (qint64 value)
     }
   // Epochs are seconds when smaller than 1e10 (Sep 2286), milliseconds above.
   const qint64 ms = value > static_cast<qint64> (1e10) ? value : value * 1000;
-  return QDateTime::fromMSecsSinceEpoch (ms, Qt::UTC);
+  return QDateTime::fromMSecsSinceEpoch (ms, QTimeZone::UTC);
 }
 
 qint64
@@ -198,7 +210,7 @@ QuotaParsers::parseCodexUsage (const QJsonObject &root,
   if (!primary.valid && !secondary.valid)
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("Codex 响应中没有额度窗口。");
+      result.message = ParserTr::tr ("No quota windows in the Codex response.");
       return result;
     }
 
@@ -280,7 +292,7 @@ QuotaParsers::parseClaudeUsage (const QJsonObject &root,
   if (!session.valid && !weekly.valid)
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("Claude 响应中没有额度窗口。");
+      result.message = ParserTr::tr ("No quota windows in the Claude response.");
       return result;
     }
 
@@ -319,7 +331,7 @@ QuotaParsers::parseClaudeDesktopHistory (const QJsonObject &root,
   if (latest.isEmpty ())
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("Claude 桌面版尚未记录额度。");
+      result.message = ParserTr::tr ("Claude Desktop has not recorded any quota yet.");
       return result;
     }
 
@@ -341,13 +353,13 @@ QuotaParsers::parseClaudeDesktopHistory (const QJsonObject &root,
   // Desktop samples every ~15 minutes while it runs; older data is suspect.
   if (result.updatedAt.isValid () && result.updatedAt.secsTo (now) > 60 * 60)
     {
-      result.message = QStringLiteral ("来自 Claude 桌面版 %1 的记录，可能已过期")
+      result.message = ParserTr::tr ("Recorded by Claude Desktop at %1, may be out of date")
                            .arg (result.updatedAt.toLocalTime ().toString (
                                QStringLiteral ("MM-dd HH:mm")));
     }
   else
     {
-      result.message = QStringLiteral ("来自 Claude 桌面版");
+      result.message = ParserTr::tr ("From Claude Desktop");
     }
   return result;
 }
@@ -410,11 +422,11 @@ QuotaParsers::parseKimiUsages (const QJsonObject &root,
   if (!weekly.valid && !session.valid)
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("Kimi 响应中没有可用的额度数据。");
+      result.message = ParserTr::tr ("No usable quota data in the Kimi response.");
       return result;
     }
   result.status = SnapshotStatus::Ok;
-  result.unit = QStringLiteral ("次");
+  result.unit = ParserTr::tr ("requests");
   result.updatedAt = QDateTime::currentDateTimeUtc ();
   return result;
 }
@@ -435,12 +447,12 @@ QuotaParsers::parseGlmQuotaLimit (const QJsonObject &root,
           || msg.contains (QStringLiteral ("unauthorized"), Qt::CaseInsensitive))
         {
           result.status = SnapshotStatus::AuthError;
-          result.message = QStringLiteral ("GLM API Key 无效或已过期。");
+          result.message = ParserTr::tr ("The GLM API key is invalid or expired.");
           return result;
         }
       result.status = SnapshotStatus::ParseError;
       result.message = msg.isEmpty ()
-          ? QStringLiteral ("GLM 接口返回失败。")
+          ? ParserTr::tr ("The GLM endpoint reported failure.")
           : QStringLiteral ("GLM：%1").arg (msg);
       return result;
     }
@@ -542,7 +554,7 @@ QuotaParsers::parseGlmQuotaLimit (const QJsonObject &root,
   if (!session && !weekly)
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("GLM 响应中没有额度窗口，可能不是 Coding Plan 的 Key。");
+      result.message = ParserTr::tr ("No quota windows in the GLM response; the key may not be a coding plan key.");
       return result;
     }
 
@@ -569,7 +581,7 @@ QuotaParsers::parseGlmQuotaLimit (const QJsonObject &root,
         {
           result.used = weekly->count;
           result.total = weekly->total;
-          result.unit = QStringLiteral ("次");
+          result.unit = ParserTr::tr ("requests");
         }
     }
 
@@ -594,12 +606,12 @@ QuotaParsers::parseMinimaxRemains (const QJsonObject &root,
       if (statusCode == 1004)
         {
           result.status = SnapshotStatus::AuthError;
-          result.message = QStringLiteral ("MiniMax API Key 无效或已过期。");
+          result.message = ParserTr::tr ("The MiniMax API key is invalid or expired.");
           return result;
         }
       result.status = SnapshotStatus::ParseError;
       result.message = msg.isEmpty ()
-          ? QStringLiteral ("MiniMax 接口返回错误（%1）。").arg (statusCode)
+          ? ParserTr::tr ("The MiniMax endpoint returned an error (%1).").arg (statusCode)
           : QStringLiteral ("MiniMax：%1").arg (msg);
       return result;
     }
@@ -623,7 +635,7 @@ QuotaParsers::parseMinimaxRemains (const QJsonObject &root,
   if (bucket.isEmpty ())
     {
       result.status = SnapshotStatus::ParseError;
-      result.message = QStringLiteral ("MiniMax 响应中没有额度数据。");
+      result.message = ParserTr::tr ("No quota data in the MiniMax response.");
       return result;
     }
 
@@ -679,10 +691,10 @@ QuotaParsers::parseMinimaxRemains (const QJsonObject &root,
       if (!unlimited)
         {
           result.status = SnapshotStatus::ParseError;
-          result.message = QStringLiteral ("MiniMax 响应中没有可识别的额度百分比。");
+          result.message = ParserTr::tr ("No recognizable quota percentages in the MiniMax response.");
           return result;
         }
-      result.message = QStringLiteral ("不限量");
+      result.message = ParserTr::tr ("Unlimited");
       result.status = SnapshotStatus::Ok;
       result.updatedAt = QDateTime::currentDateTimeUtc ();
       return result;

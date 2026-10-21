@@ -9,7 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Quick QuickControls2 Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Quick QuickControls2 Test LinguistTools)
 find_package(Dtk6 REQUIRED COMPONENTS Core Gui Widget)
 find_package(DDEShell REQUIRED)
 
@@ -39,6 +39,8 @@ target_link_libraries(coding-plan-core PUBLIC
 add_library(ds-coding-plan-applet SHARED
     src/codingplanapplet.h
     src/codingplanapplet.cpp
+    src/codingplansettings.h
+    src/codingplansettings.cpp
 )
 
 target_include_directories(ds-coding-plan-applet PRIVATE
@@ -48,6 +50,8 @@ target_include_directories(ds-coding-plan-applet PRIVATE
 target_link_libraries(ds-coding-plan-applet PRIVATE
     coding-plan-core
     Dde::Shell
+    Dtk6::Core
+    Dtk6::Widget
     Qt6::Core
     Qt6::Network
     Qt6::Quick
@@ -59,6 +63,20 @@ set(DS_CODING_PLAN_PACKAGE_ID org.deepin.ds.coding-plan)
 ds_install_package(
     PACKAGE ${DS_CODING_PLAN_PACKAGE_ID}
     TARGET ds-coding-plan-applet
+)
+
+# lupdate/lrelease the plugin's user-visible strings (package QML + applet
+# and core sources) and install the .qm catalogs into the package
+# translations dir; dde-shell loads <pluginId>_<locale>.qm from there at
+# runtime.
+ds_handle_package_translation(
+    PACKAGE ${DS_CODING_PLAN_PACKAGE_ID}
+    QML_FILES package/main.qml
+    SOURCE_FILES src/codingplanapplet.cpp
+                src/codingplansettings.cpp
+                src/codingplanmodel.cpp
+                src/direct_quota_provider.cpp
+                src/quota_parsers.cpp
 )
 
 include(CTest)

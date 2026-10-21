@@ -192,7 +192,7 @@ DirectQuotaProvider::refreshEntry (const QuotaRequest &request)
       if (!plan.present)
         {
           emit refreshFailed (request.entryId,
-                              QStringLiteral ("未检测到 ZCode 的 Coding Plan 登录信息。"),
+                              tr ("No ZCode coding plan sign-in found."),
                               SnapshotStatus::AuthError);
           return;
         }
@@ -205,7 +205,7 @@ DirectQuotaProvider::refreshEntry (const QuotaRequest &request)
   else
     {
       emit refreshFailed (request.entryId,
-                          QStringLiteral ("未知的提供商：%1").arg (request.providerId),
+                          tr ("Unknown provider: %1").arg (request.providerId),
                           SnapshotStatus::Unsupported);
     }
 }
@@ -240,7 +240,7 @@ DirectQuotaProvider::finish (const QuotaRequest &request,
     {
       emit refreshFailed (request.entryId,
                           snapshot.message.isEmpty ()
-                              ? QStringLiteral ("读取额度失败。")
+                              ? tr ("Failed to read the quota.")
                               : snapshot.message,
                           snapshot.status);
       return;
@@ -288,8 +288,8 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
                    }
                  emit refreshFailed (request.entryId,
                                      timedOut
-                                         ? QStringLiteral ("%1 请求超时。").arg (providerName)
-                                         : QStringLiteral ("%1 网络错误：%2")
+                                         ? tr ("%1 request timed out.").arg (providerName)
+                                         : tr ("%1 network error: %2")
                                                .arg (providerName, reply->errorString ()),
                                      SnapshotStatus::NetworkError);
                  return;
@@ -302,7 +302,7 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
                {
                  emit refreshFailed (
                      request.entryId,
-                     QStringLiteral ("Codex 登录已过期且刷新失败（HTTP %1），请运行 codex login。")
+                     tr ("Codex sign-in expired and refresh failed (HTTP %1); please run codex login.")
                          .arg (httpStatus),
                      SnapshotStatus::AuthError);
                  return;
@@ -311,7 +311,7 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
              if (httpStatus == 401 || httpStatus == 403)
                {
                  emit refreshFailed (request.entryId,
-                                     QStringLiteral ("%1 认证失败（HTTP %2），凭据可能已失效。")
+                                     tr ("%1 authentication failed (HTTP %2); the credentials may no longer be valid.")
                                          .arg (providerName)
                                          .arg (httpStatus),
                                      SnapshotStatus::AuthError);
@@ -321,7 +321,7 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
              if (httpStatus == 429)
                {
                  emit refreshFailed (request.entryId,
-                                     QStringLiteral ("%1 请求过于频繁，稍后重试。").arg (providerName),
+                                     tr ("%1 is rate limited, retry later.").arg (providerName),
                                      SnapshotStatus::RateLimited);
                  return;
                }
@@ -329,7 +329,7 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
              if (httpStatus >= 300)
                {
                  emit refreshFailed (request.entryId,
-                                     QStringLiteral ("%1 接口返回 HTTP %2。")
+                                     tr ("%1 endpoint returned HTTP %2.")
                                          .arg (providerName)
                                          .arg (httpStatus),
                                      SnapshotStatus::NetworkError);
@@ -343,7 +343,7 @@ DirectQuotaProvider::execute (const QuotaRequest &request,
                  || !document.isObject ())
                {
                  emit refreshFailed (request.entryId,
-                                     QStringLiteral ("%1 响应不是有效的 JSON。").arg (providerName),
+                                     tr ("%1 response is not valid JSON.").arg (providerName),
                                      SnapshotStatus::ParseError);
                  return;
                }
@@ -360,7 +360,7 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
   if (!credentials.present)
     {
       emit refreshFailed (request.entryId,
-                          QStringLiteral ("未检测到 Codex 登录，请运行 codex login。"),
+                          tr ("No Codex sign-in found; please run codex login."),
                           SnapshotStatus::AuthError);
       return;
     }
@@ -368,7 +368,7 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
     {
       emit refreshFailed (
           request.entryId,
-          QStringLiteral ("Codex 处于 API Key 模式，无法读取 ChatGPT 套餐额度。"),
+          tr ("Codex is in API key mode, the ChatGPT plan quota cannot be read."),
           SnapshotStatus::Unsupported);
       return;
     }
@@ -418,7 +418,7 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
     {
       emit refreshFailed (
           request.entryId,
-          QStringLiteral ("Codex 登录即将过期，且 auth.json 不可写，请运行一次 codex 刷新登录。"),
+          tr ("The Codex sign-in is about to expire and auth.json is not writable; run codex once to refresh the sign-in."),
           SnapshotStatus::AuthError);
       return;
     }
@@ -446,7 +446,7 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
                {
                  emit refreshFailed (
                      request.entryId,
-                     QStringLiteral ("Codex 登录已过期且刷新失败，请运行 codex login。"),
+                     tr ("Codex sign-in expired and refresh failed; please run codex login."),
                      SnapshotStatus::AuthError);
                  return;
                }
@@ -459,7 +459,7 @@ DirectQuotaProvider::fetchCodex (const QuotaRequest &request)
                              << authPath;
                  emit refreshFailed (
                      request.entryId,
-                     QStringLiteral ("Codex 新令牌写回 auth.json 失败，Codex CLI 可能需要重新运行 codex login。"),
+                     tr ("Failed to write the rotated Codex token back to auth.json; the Codex CLI may need codex login again."),
                      SnapshotStatus::AuthError);
                  return;
                }
@@ -492,8 +492,8 @@ DirectQuotaProvider::fetchClaude (const QuotaRequest &request)
         }
       emit refreshFailed (request.entryId,
                           expired
-                              ? QStringLiteral ("Claude Code 登录已过期，请运行一次 claude 刷新登录。")
-                              : QStringLiteral ("未检测到 Claude Code 或 Claude 桌面版登录。"),
+                              ? tr ("The Claude Code sign-in expired; run claude once to refresh the sign-in.")
+                              : tr ("No Claude Code or Claude Desktop sign-in found."),
                           SnapshotStatus::AuthError);
       return;
     }
@@ -530,7 +530,7 @@ DirectQuotaProvider::fetchKimi (const QuotaRequest &request)
       if (!credentials.present)
         {
           emit refreshFailed (request.entryId,
-                              QStringLiteral ("未检测到 Kimi Code 登录，请先运行 kimi 登录。"),
+                              tr ("No Kimi Code sign-in found; please sign in with kimi first."),
                               SnapshotStatus::AuthError);
           return;
         }
@@ -540,7 +540,7 @@ DirectQuotaProvider::fetchKimi (const QuotaRequest &request)
           && credentials.expiresAtMs - QDateTime::currentMSecsSinceEpoch () <= 5000)
         {
           emit refreshFailed (request.entryId,
-                              QStringLiteral ("Kimi 登录已过期，请运行一次 kimi CLI 刷新登录。"),
+                              tr ("The Kimi sign-in expired; run the kimi CLI once to refresh the sign-in."),
                               SnapshotStatus::AuthError);
           return;
         }
@@ -549,7 +549,7 @@ DirectQuotaProvider::fetchKimi (const QuotaRequest &request)
 
   if (token.trimmed ().isEmpty ())
     {
-      emit refreshFailed (request.entryId, QStringLiteral ("未设置 Kimi API Key。"),
+      emit refreshFailed (request.entryId, tr ("No Kimi API key set."),
                           SnapshotStatus::AuthError);
       return;
     }
@@ -574,8 +574,8 @@ DirectQuotaProvider::fetchGlm (const QuotaRequest &request, const QString &key,
     {
       emit refreshFailed (request.entryId,
                           request.manual
-                              ? QStringLiteral ("未设置 GLM API Key。")
-                              : QStringLiteral ("未检测到 ZCode 的 Coding Plan Key。"),
+                              ? tr ("No GLM API key set.")
+                              : tr ("No ZCode coding plan key found."),
                           SnapshotStatus::AuthError);
       return;
     }
@@ -602,7 +602,7 @@ DirectQuotaProvider::fetchMinimax (const QuotaRequest &request)
 {
   if (request.apiKey.trimmed ().isEmpty ())
     {
-      emit refreshFailed (request.entryId, QStringLiteral ("未设置 MiniMax API Key。"),
+      emit refreshFailed (request.entryId, tr ("No MiniMax API key set."),
                           SnapshotStatus::AuthError);
       return;
     }

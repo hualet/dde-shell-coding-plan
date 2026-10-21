@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -85,10 +86,17 @@ private slots:
   void modelAutoRefreshIsCppSide ();
   void autoRefreshBacksOffUntilQuotaChanges ();
   void refreshExposesBusyStateAndCompletionTime ();
+  void entryVisibilityDefaultsOnAndPersists ();
+  void entryVisibilityPrunedWhenEntryRemoved ();
 
   // Panel / build structure contracts
   void panelQmlLeftClickOpensStatusPopup ();
+  void panelQmlHasContextMenuSettings ();
   void panelQmlHasAccountManagement ();
+  void panelQmlRingCountFollowsPerPlanVisibility ();
+  void settingsPanelUsesDtkSettings ();
+  void settingsPanelOwnsAccountAdding ();
+  void userFacingStringsAreTranslationReady ();
   void panelQmlHasNoExtensionPairingUi ();
   void panelQmlFiveHourFallsBackToText ();
   void panelQmlDockWidgetUsesOneFiveHourRingPerProvider ();
@@ -522,7 +530,7 @@ ProviderRegistryTest::claudeDesktopHistoryUsesLatestSample ()
   QCOMPARE (snapshot.remainingRatio, 0.94);
   // updatedAt is when Desktop sampled, not when we read the file.
   QCOMPARE (snapshot.updatedAt.toMSecsSinceEpoch (), qint64 (1791448388886));
-  QVERIFY (!snapshot.message.contains (QStringLiteral ("过期")));
+  QVERIFY (!snapshot.message.contains (QStringLiteral ("out of date")));
 
   const QuotaSnapshot empty = QuotaParsers::parseClaudeDesktopHistory (
       parseJson (R"({"version": 2, "samples": [{"t": 1, "u": {}}]})"),
@@ -539,7 +547,7 @@ ProviderRegistryTest::claudeDesktopHistoryFlagsStaleSample ()
   const QuotaSnapshot snapshot = QuotaParsers::parseClaudeDesktopHistory (
       root, QuotaSnapshot (), now);
   QCOMPARE (snapshot.status, SnapshotStatus::Ok);
-  QVERIFY (snapshot.message.contains (QStringLiteral ("过期")));
+  QVERIFY (snapshot.message.contains (QStringLiteral ("out of date")));
   QVERIFY (snapshot.remainingRatio < 0);
 }
 
@@ -603,7 +611,7 @@ ProviderRegistryTest::glmParserMapsUnitWindows ()
   QCOMPARE (snapshot.remainingRatio, 0.60);
   QCOMPARE (snapshot.used, 40.0);
   QCOMPARE (snapshot.total, 100.0);
-  QCOMPARE (snapshot.unit, QStringLiteral ("次"));
+  QCOMPARE (snapshot.unit, QStringLiteral ("requests"));
   QVERIFY (snapshot.message.contains (QStringLiteral ("pro")));
   QCOMPARE (snapshot.resetAt.toMSecsSinceEpoch (), qint64 (1758800000000));
 }
@@ -698,7 +706,7 @@ ProviderRegistryTest::minimaxParserRejectsMissingPercentages ()
       parseJson (R"({"model_remains": [{"model_name": "general", "current_interval_status": 3, "current_weekly_status": 3}], "base_resp": {"status_code": 0}})"),
       QuotaSnapshot ());
   QCOMPARE (unlimited.status, SnapshotStatus::Ok);
-  QCOMPARE (unlimited.message, QStringLiteral ("不限量"));
+  QCOMPARE (unlimited.message, QStringLiteral ("Unlimited"));
 }
 
 void
@@ -815,6 +823,71 @@ ProviderRegistryTest::refreshExposesBusyStateAndCompletionTime ()
   QCOMPARE (snapshot.value (QStringLiteral ("fiveHourRemainingRatio")).toDouble (), 0.8);
 
   QFile::remove (CredentialStore::claudeDesktopUsagePath ());
+}
+
+void
+ProviderRegistryTest::entryVisibilityDefaultsOnAndPersists ()
+{
+  resetPersistence ();
+  {
+    CodingPlanModel model;
+    model.setCredentialProbe ([](const QString &id) {
+      return id == QStringLiteral ("codex");
+    });
+
+    // Every plan is visible until switched off.
+    QCOMPARE (model.snapshots ().at (0).toMap ()
+                  .value (QStringLiteral ("visible")).toBool (),
+              true);
+
+    QSignalSpy spy (&model, &CodingPlanModel::snapshotsChanged);
+    model.setEntryVisible (QStringLiteral ("codex"), false);
+    QCOMPARE (model.snapshots ().at (0).toMap ()
+                  .value (QStringLiteral ("visible")).toBool (),
+              false);
+    QVERIFY (spy.count () >= 1);
+
+    // Same-value writes stay quiet.
+    const int count = spy.count ();
+    model.setEntryVisible (QStringLiteral ("codex"), false);
+    QCOMPARE (spy.count (), count);
+  }
+
+  // The hidden state survives a model restart.
+  CodingPlanModel model;
+  model.setCredentialProbe ([](const QString &id) {
+    return id == QStringLiteral ("codex");
+  });
+  QCOMPARE (model.snapshots ().at (0).toMap ()
+                .value (QStringLiteral ("visible")).toBool (),
+            false);
+
+  model.setEntryVisible (QStringLiteral ("codex"), true);
+  QCOMPARE (model.snapshots ().at (0).toMap ()
+                .value (QStringLiteral ("visible")).toBool (),
+            true);
+}
+
+void
+ProviderRegistryTest::entryVisibilityPrunedWhenEntryRemoved ()
+{
+  resetPersistence ();
+  CodingPlanModel model;
+  model.setCredentialProbe ([](const QString &) { return false; });
+  model.addAccount (QStringLiteral ("glm-coding"), QString (),
+                    QStringLiteral ("sk-test-key"));
+  const QString entryId = model.snapshots ().at (0).toMap ()
+      .value (QStringLiteral ("entryId")).toString ();
+  model.setEntryVisible (entryId, false);
+
+  QSettings settings (QStringLiteral ("deepin"),
+                      QStringLiteral ("dde-shell-coding-plan"));
+  QVERIFY (settings.value (QStringLiteral ("hiddenEntries")).toStringList ()
+           .contains (entryId));
+
+  model.removeAccount (entryId);
+  QVERIFY (!settings.value (QStringLiteral ("hiddenEntries")).toStringList ()
+           .contains (entryId));
 }
 
 void
@@ -1221,18 +1294,137 @@ void
 ProviderRegistryTest::panelQmlHasAccountManagement ()
 {
   const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
-  QVERIFY (qml.contains (QStringLiteral ("manualCapableProviders")));
-  QVERIFY (qml.contains (QStringLiteral ("addAccount")));
+  // Adding accounts moved to the settings dialog; removal stays per card.
   QVERIFY (qml.contains (QStringLiteral ("removeAccount")));
   QVERIFY (qml.contains (QStringLiteral ("modelData.entryId")));
-  QVERIFY (qml.contains (QStringLiteral ("刷新全部")));
+  QVERIFY (qml.contains (QStringLiteral ("Refresh All")));
+  QVERIFY (qml.contains (QStringLiteral ("Applet.showSettings")));
   // Refreshing is visible: busy button, per-card status, last refresh time.
   QVERIFY (qml.contains (QStringLiteral ("Applet.quota.refreshing")));
   QVERIFY (qml.contains (QStringLiteral ("snapshot.refreshing")));
-  QVERIFY (qml.contains (QStringLiteral ("刷新中…")));
+  QVERIFY (qml.contains (QStringLiteral ("Refreshing…")));
   QVERIFY (qml.contains (QStringLiteral ("Applet.quota.lastRefreshAt")));
   QVERIFY (qml.contains (QStringLiteral ("cardStatusText(modelData)")));
-  QVERIFY (qml.contains (QStringLiteral ("未检测到已登录的 Coding CLI")));
+  QVERIFY (qml.contains (QStringLiteral ("No logged-in coding CLI detected")));
+}
+
+void
+ProviderRegistryTest::panelQmlHasContextMenuSettings ()
+{
+  const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  // Right-click on the taskbar item is the main settings entry.
+  QVERIFY (qml.contains (QStringLiteral ("import Qt.labs.platform 1.1 as LP")));
+  QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.RightButton")));
+  QVERIFY (qml.contains (QStringLiteral ("LP.Menu")));
+  // The popup keeps a secondary entry.
+  QVERIFY (qml.contains (QStringLiteral ("Applet.showSettings")));
+}
+
+void
+ProviderRegistryTest::panelQmlRingCountFollowsPerPlanVisibility ()
+{
+  const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY (qml.contains (QStringLiteral ("taskbarSnapshots")));
+  QVERIFY (qml.contains (QStringLiteral ("s.visible !== false")));
+  QVERIFY (qml.contains (QStringLiteral ("root.taskbarSnapshots[index]")));
+}
+
+void
+ProviderRegistryTest::settingsPanelUsesDtkSettings ()
+{
+  // The dialog is a DTK DSettingsDialog with one group per feature; both
+  // options are custom widgets over the model, so nothing is stored inside
+  // DSettings itself (per-plan visibility persists in the model's
+  // QSettings instead).
+  const QString source =
+      readFile (QStringLiteral (SOURCE_DIR "/src/codingplansettings.cpp"));
+  QVERIFY (source.contains (QStringLiteral ("DSettingsDialog")));
+  QVERIFY (source.contains (QStringLiteral ("Show Plans")));
+  QVERIFY (source.contains (
+      QStringLiteral ("Plans switched on are shown on the taskbar")));
+  QVERIFY (source.contains (QStringLiteral ("Add Plan")));
+  QVERIFY (source.contains (QStringLiteral ("codingplan-planlist")));
+  QVERIFY (source.contains (QStringLiteral ("PlanVisibilityWidget")));
+  QVERIFY (source.contains (QStringLiteral ("DSwitchButton")));
+  QVERIFY (source.contains (QStringLiteral ("setEntryVisible")));
+  QVERIFY (!source.contains (QStringLiteral ("QSettingBackend")));
+  // The DTK-owned "Restore Defaults" button is hidden; setResetVisible only
+  // works on the existing button, so it must follow updateSettings.
+  QVERIFY (source.indexOf (QStringLiteral ("updateSettings (QByteArrayLiteral"))
+           < source.indexOf (QStringLiteral ("setResetVisible (false)")));
+
+  const QString applet =
+      readFile (QStringLiteral (SOURCE_DIR "/src/codingplanapplet.cpp"));
+  QVERIFY (applet.contains (QStringLiteral ("showSettings")));
+
+  const QString header =
+      readFile (QStringLiteral (SOURCE_DIR "/src/codingplanmodel.h"));
+  QVERIFY (header.contains (QStringLiteral ("setEntryVisible")));
+
+  const QString cmake = readFile (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
+  QVERIFY (cmake.contains (QStringLiteral ("Dtk6::Widget")));
+}
+
+void
+ProviderRegistryTest::settingsPanelOwnsAccountAdding ()
+{
+  // Manual account adding lives in the settings dialog custom widget, not
+  // in the taskbar popup.
+  const QString source =
+      readFile (QStringLiteral (SOURCE_DIR "/src/codingplansettings.cpp"));
+  QVERIFY (source.contains (QStringLiteral ("ManualAccountsWidget")));
+  QVERIFY (source.contains (QStringLiteral ("manualCapableProviders")));
+  QVERIFY (source.contains (QStringLiteral ("addAccount")));
+  QVERIFY (source.contains (QStringLiteral ("removeAccount")));
+  QVERIFY (source.contains (QStringLiteral ("codingplan-accounts")));
+  // The wordy hints were dropped.
+  QVERIFY (!source.contains (QStringLiteral ("No need to add")));
+  QVERIFY (!source.contains (QStringLiteral ("Manually added accounts")));
+
+  const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY (!qml.contains (QStringLiteral ("addAccountForm")));
+  QVERIFY (!qml.contains (QStringLiteral ("vendorBox")));
+}
+
+void
+ProviderRegistryTest::userFacingStringsAreTranslationReady ()
+{
+  // Sources carry English text wrapped in tr()/qsTr(); the Chinese lives in
+  // the zh_CN catalog. Raw CJK inside string literals means a hardcoded
+  // string snuck back in. Comments may legitimately mention the Chinese
+  // group names, so strip them before matching.
+  const QRegularExpression lineComment ("//[^\\n]*");
+  const QRegularExpression cjkInLiteral ("\"[^\"]*[\\x{4e00}-\\x{9fff}][^\"]*\"");
+  const QStringList sources = {
+    QStringLiteral (SOURCE_DIR "/package/main.qml"),
+    QStringLiteral (SOURCE_DIR "/src/codingplanapplet.cpp"),
+    QStringLiteral (SOURCE_DIR "/src/codingplansettings.cpp"),
+    QStringLiteral (SOURCE_DIR "/src/codingplanmodel.cpp"),
+    QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"),
+    QStringLiteral (SOURCE_DIR "/src/quota_parsers.cpp"),
+  };
+  for (const QString &path : sources)
+    {
+      const QString source =
+          readFile (path).replace (lineComment, QString ());
+      QVERIFY2 (!cjkInLiteral.match (source).hasMatch (),
+                qPrintable (QStringLiteral ("hardcoded CJK string in %1").arg (path)));
+    }
+
+  // The zh_CN catalog carries the shipped Chinese UI text.
+  const QString ts = readFile (
+      QStringLiteral (SOURCE_DIR "/translations/org.deepin.ds.coding-plan_zh_CN.ts"));
+  QVERIFY (ts.contains (QStringLiteral ("<source>Settings</source>")));
+  QVERIFY (ts.contains (QStringLiteral ("<translation>设置</translation>")));
+  QVERIFY (ts.contains (QStringLiteral ("<translation>显示 Plan</translation>")));
+  QVERIFY (ts.contains (QStringLiteral ("<translation>添加 Plan</translation>")));
+  QVERIFY (!ts.contains (QStringLiteral ("unfinished")));
+
+  // And the build ships the catalogs the dde-shell loader expects.
+  const QString cmake = readFile (QStringLiteral (SOURCE_DIR "/CMakeLists.txt"));
+  QVERIFY (cmake.contains (QStringLiteral ("LinguistTools")));
+  QVERIFY (cmake.contains (QStringLiteral ("ds_handle_package_translation")));
+  QVERIFY (cmake.contains (QStringLiteral ("src/quota_parsers.cpp")));
 }
 
 void
@@ -1320,7 +1512,7 @@ ProviderRegistryTest::kimiPolicyIsReadOnly ()
   const QString source = readFile (
       QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
   // The Kimi CLI owns token refresh; the applet only asks the user to rerun it.
-  QVERIFY (source.contains (QStringLiteral ("请运行一次 kimi CLI 刷新登录")));
+  QVERIFY (source.contains (QStringLiteral ("run the kimi CLI once to refresh")));
   const QString kimiFetch = source.mid (source.indexOf (QStringLiteral ("fetchKimi")),
                                         source.indexOf (QStringLiteral ("fetchGlm"))
                                             - source.indexOf (QStringLiteral ("fetchKimi")));
@@ -1333,7 +1525,7 @@ ProviderRegistryTest::claudePolicyIsReadOnly ()
   const QString source = readFile (
       QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
   // Claude Code owns its OAuth tokens; never refresh or write them.
-  QVERIFY (source.contains (QStringLiteral ("请运行一次 claude 刷新登录")));
+  QVERIFY (source.contains (QStringLiteral ("run claude once to refresh")));
   const int start = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchClaude"));
   const int end = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchKimi"));
   QVERIFY (start > 0 && end > start);

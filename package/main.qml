@@ -4,6 +4,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import Qt.labs.platform 1.1 as LP
 import org.deepin.ds 1.0
 import org.deepin.ds.dock 1.0
 import org.deepin.dtk 1.0
@@ -16,7 +17,10 @@ AppletItem {
     readonly property bool useClassicTaskbarLayout: Panel.itemAlignment === Dock.LeftAlignment
     readonly property int dockSize: Panel.rootObject.dockSize || 48
     readonly property var quotaSnapshots: Applet.quota ? Applet.quota.snapshots : []
-    readonly property int visibleRingCount: Math.min(4, quotaSnapshots.length)
+    // Plans turned off in the settings dialog ("显示 Plan") leave the
+    // taskbar; the popup still lists every account.
+    readonly property var taskbarSnapshots: quotaSnapshots.filter(function (s) { return s.visible !== false })
+    readonly property int visibleRingCount: taskbarSnapshots.length
     readonly property bool isDarkTheme: DTK.themeType === ApplicationHelper.DarkType
 
     property int dockOrder: useClassicTaskbarLayout ? 21 : 10
@@ -141,13 +145,13 @@ AppletItem {
 
     function cardStatusText(snapshot) {
         if (snapshot.refreshing)
-            return qsTr("刷新中…")
+            return qsTr("Refreshing…")
         if (root.isErrorStatus(snapshot))
-            return snapshot.message || qsTr("读取失败")
+            return snapshot.message || qsTr("Failed to read")
         const parts = []
         const updated = root.formatTime(snapshot.updatedAt, false)
         if (updated.length > 0)
-            parts.push(qsTr("更新于 %1").arg(updated))
+            parts.push(qsTr("Updated at %1").arg(updated))
         if (snapshot.message)
             parts.push(snapshot.message)
         return parts.join(" · ")
@@ -187,6 +191,42 @@ AppletItem {
         }
     }
 
+    // Main settings entry: right-click the taskbar item.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.RightButton
+        preventStealing: true
+
+        onClicked: function (mouse) {
+            if (popup.popupVisible)
+                popup.close()
+            toolTip.close()
+            settingsMenuLoader.active = true
+            settingsMenuLoader.item.open()
+            mouse.accepted = true
+        }
+
+        onPressed: function (mouse) {
+            mouse.accepted = true
+        }
+    }
+
+    Loader {
+        id: settingsMenuLoader
+        active: false
+
+        sourceComponent: LP.Menu {
+            LP.MenuItem {
+                text: qsTr("Settings")
+
+                onTriggered: {
+                    if (Applet.showSettings)
+                        Applet.showSettings()
+                }
+            }
+        }
+    }
+
     // In horizontal dock mode the rings sit side by side; in vertical (left/
     // right) dock mode they stack so they don't overflow the narrow column.
     Repeater {
@@ -203,7 +243,7 @@ AppletItem {
             y: root.useColumnLayout
                 ? (parent.height - root.ringsExtent) / 2 + index * (root.ringSize + 4)
                 : (parent.height - height) / 2
-            readonly property var snapshot: root.quotaSnapshots[index]
+            readonly property var snapshot: root.taskbarSnapshots[index]
 
             onPaint: {
                 const ctx = getContext("2d")
@@ -339,10 +379,11 @@ AppletItem {
 
                     Button {
                         flat: true
-                        text: qsTr("添加账号")
+                        text: qsTr("Settings")
                         font.pixelSize: 12
                         onClicked: {
-                            addAccountForm.visible = !addAccountForm.visible
+                            if (Applet.showSettings)
+                                Applet.showSettings()
                         }
                     }
                 }
@@ -435,7 +476,7 @@ AppletItem {
 
                                     Label {
                                         anchors.centerIn: parent
-                                        text: qsTr("5小时额度：%1").arg(root.fiveHourQuotaPercent(modelData))
+                                        text: qsTr("5-hour quota: %1").arg(root.fiveHourQuotaPercent(modelData))
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
@@ -454,7 +495,7 @@ AppletItem {
 
                                     Label {
                                         anchors.centerIn: parent
-                                        text: qsTr("周额度：%1").arg(root.quotaPercent(modelData))
+                                        text: qsTr("Weekly quota: %1").arg(root.quotaPercent(modelData))
                                         font.pixelSize: 12
                                         font.bold: true
                                     }
@@ -478,7 +519,7 @@ AppletItem {
 
                 Button {
                     Layout.fillWidth: true
-                    text: root.refreshBusy ? qsTr("刷新中…") : qsTr("刷新全部")
+                    text: root.refreshBusy ? qsTr("Refreshing…") : qsTr("Refresh All")
                     enabled: !root.refreshBusy
                     onClicked: root.refreshAll()
                 }
@@ -488,74 +529,16 @@ AppletItem {
                     readonly property string lastRefresh: Applet.quota
                         ? root.formatTime(Applet.quota.lastRefreshAt, true) : ""
                     visible: lastRefresh.length > 0 && !root.refreshBusy
-                    text: qsTr("上次刷新 %1").arg(lastRefresh)
+                    text: qsTr("Last refresh %1").arg(lastRefresh)
                     font.pixelSize: 11
                     color: root.secondaryTextColor
                     horizontalAlignment: Text.AlignHCenter
                 }
 
-                ColumnLayout {
-                    id: addAccountForm
-                    Layout.fillWidth: true
-                    visible: false
-                    spacing: 8
-
-                    readonly property var capable: Applet.quota ? Applet.quota.manualCapableProviders : []
-
-                    ComboBox {
-                        id: vendorBox
-                        Layout.fillWidth: true
-                        model: addAccountForm.capable
-                        textRole: "name"
-                    }
-
-                    TextField {
-                        id: labelField
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("备注名（可选，如“工作号”）")
-                        font.pixelSize: 12
-                    }
-
-                    TextField {
-                        id: keyField
-                        Layout.fillWidth: true
-                        placeholderText: qsTr("粘贴 API Key")
-                        echoMode: TextInput.Password
-                        font.pixelSize: 12
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Button {
-                            text: qsTr("添加")
-                            Layout.fillWidth: true
-                            enabled: keyField.text.trim().length > 0
-                                     && addAccountForm.capable.length > 0
-                            onClicked: {
-                                if (Applet.quota && vendorBox.currentIndex >= 0) {
-                                    const vendor = addAccountForm.capable[vendorBox.currentIndex]
-                                    Applet.quota.addAccount(vendor.id, labelField.text, keyField.text)
-                                    labelField.clear()
-                                    keyField.clear()
-                                    addAccountForm.visible = false
-                                }
-                            }
-                        }
-
-                        Button {
-                            text: qsTr("取消")
-                            Layout.fillWidth: true
-                            onClicked: addAccountForm.visible = false
-                        }
-                    }
-                }
-
                 Label {
                     Layout.fillWidth: true
                     visible: root.quotaSnapshots.length === 0
-                    text: qsTr("未检测到已登录的 Coding CLI（Codex / Claude / Kimi / GLM），可在右上角手动添加账号。")
+                    text: qsTr("No logged-in coding CLI detected (Codex / Claude / Kimi / GLM). Add an account in Settings.")
                     wrapMode: Text.WordWrap
                     color: root.secondaryTextColor
                     font.pixelSize: 12
