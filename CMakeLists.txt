@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(dde-coding-plan VERSION 1.0.1 LANGUAGES CXX)
+project(dde-coding-plan VERSION 1.0.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,6 +63,13 @@ set(DS_CODING_PLAN_PACKAGE_ID org.deepin.ds.coding-plan)
 ds_install_package(
     PACKAGE ${DS_CODING_PLAN_PACKAGE_ID}
     TARGET ds-coding-plan-applet
+)
+
+# hicolor icons: required by the UOS app store package check and used by
+# desktop environments for any future launcher entry.
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/hicolor/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor
 )
 
 # lupdate/lrelease the plugin's user-visible strings (package QML + applet
