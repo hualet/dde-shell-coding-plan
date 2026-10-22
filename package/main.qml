@@ -18,7 +18,7 @@ AppletItem {
     readonly property int dockSize: Panel.rootObject.dockSize || 48
     readonly property var quotaSnapshots: Applet.quota ? Applet.quota.snapshots : []
     // Plans turned off in the settings dialog ("显示 Plan") leave the
-    // taskbar; the popup still lists every account.
+    // taskbar; the popup follows the same filter.
     readonly property var taskbarSnapshots: quotaSnapshots.filter(function (s) { return s.visible !== false })
     readonly property int visibleRingCount: taskbarSnapshots.length
     readonly property bool isDarkTheme: DTK.themeType === ApplicationHelper.DarkType
@@ -143,18 +143,19 @@ AppletItem {
             .indexOf(snapshot.status) >= 0
     }
 
+    // Cards stay lean: plan name plus update time; entries that cannot be
+    // refreshed show a one-line "Cannot update" reason instead.
     function cardStatusText(snapshot) {
         if (snapshot.refreshing)
             return qsTr("Refreshing…")
-        if (root.isErrorStatus(snapshot))
-            return snapshot.message || qsTr("Failed to read")
-        const parts = []
+        if (root.isErrorStatus(snapshot)) {
+            const reason = snapshot.message && snapshot.message.length > 0
+                ? snapshot.message
+                : qsTr("Failed to read")
+            return qsTr("Cannot update: %1").arg(reason)
+        }
         const updated = root.formatTime(snapshot.updatedAt, false)
-        if (updated.length > 0)
-            parts.push(qsTr("Updated at %1").arg(updated))
-        if (snapshot.message)
-            parts.push(snapshot.message)
-        return parts.join(" · ")
+        return updated.length > 0 ? qsTr("Updated at %1").arg(updated) : ""
     }
 
     PanelToolTip {
@@ -377,19 +378,31 @@ AppletItem {
                         Layout.fillWidth: true
                     }
 
-                    Button {
-                        flat: true
-                        text: qsTr("Settings")
-                        font.pixelSize: 12
-                        onClicked: {
-                            if (Applet.showSettings)
-                                Applet.showSettings()
+                    // Icon-only secondary entry; right-click is the main one.
+                    Item {
+                        implicitWidth: 30
+                        implicitHeight: 30
+
+                        DciIcon {
+                            anchors.centerIn: parent
+                            name: "preferences-system"
+                            sourceSize: Qt.size(16, 16)
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (Applet.showSettings)
+                                    Applet.showSettings()
+                            }
                         }
                     }
                 }
 
                 Repeater {
-                    model: root.quotaSnapshots
+                    model: root.taskbarSnapshots
 
                     Rectangle {
                         Layout.fillWidth: true
@@ -509,7 +522,7 @@ AppletItem {
                                     color: root.isErrorStatus(modelData) && !modelData.refreshing
                                         ? root.errorRingColor
                                         : root.secondaryTextColor
-                                    wrapMode: Text.Wrap
+                                    elide: Text.ElideRight
                                     horizontalAlignment: Text.AlignHCenter
                                 }
 
@@ -539,6 +552,15 @@ AppletItem {
                     Layout.fillWidth: true
                     visible: root.quotaSnapshots.length === 0
                     text: qsTr("No logged-in coding CLI detected (Codex / Claude / Kimi / GLM). Add an account in Settings.")
+                    wrapMode: Text.WordWrap
+                    color: root.secondaryTextColor
+                    font.pixelSize: 12
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: root.quotaSnapshots.length > 0 && root.taskbarSnapshots.length === 0
+                    text: qsTr("All plans are switched off. Turn them on in Settings.")
                     wrapMode: Text.WordWrap
                     color: root.secondaryTextColor
                     font.pixelSize: 12

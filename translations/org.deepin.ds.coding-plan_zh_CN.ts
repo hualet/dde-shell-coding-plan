@@ -226,10 +226,6 @@
 <context>
     <name>main</name>
     <message>
-        <source>N/A</source>
-        <translation>N/A</translation>
-    </message>
-    <message>
         <source>Refreshing…</source>
         <translation>刷新中…</translation>
     </message>
@@ -250,14 +246,6 @@
         <translation>Coding Plan</translation>
     </message>
     <message>
-        <source>5-hour quota: %1</source>
-        <translation>5小时额度：%1</translation>
-    </message>
-    <message>
-        <source>Weekly quota: %1</source>
-        <translation>周额度：%1</translation>
-    </message>
-    <message>
         <source>Refresh All</source>
         <translation>刷新全部</translation>
     </message>
@@ -268,6 +256,26 @@
     <message>
         <source>No logged-in coding CLI detected (Codex / Claude / Kimi / GLM). Add an account in Settings.</source>
         <translation>未检测到已登录的 Coding CLI（Codex / Claude / Kimi / GLM），可在设置中手动添加账号。</translation>
+    </message>
+    <message>
+        <source>Cannot update: %1</source>
+        <translation>无法更新：%1</translation>
+    </message>
+    <message>
+        <source>All plans are switched off. Turn them on in Settings.</source>
+        <translation>所有 Plan 均已关闭，可在设置中开启。</translation>
+    </message>
+    <message>
+        <source>N/A</source>
+        <translation>N/A</translation>
+    </message>
+    <message>
+        <source>5-hour quota: %1</source>
+        <translation>5小时额度：%1</translation>
+    </message>
+    <message>
+        <source>Weekly quota: %1</source>
+        <translation>周额度：%1</translation>
     </message>
 </context>
 </TS>

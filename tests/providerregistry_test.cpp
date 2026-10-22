@@ -98,7 +98,7 @@ private slots:
   void settingsPanelOwnsAccountAdding ();
   void userFacingStringsAreTranslationReady ();
   void panelQmlHasNoExtensionPairingUi ();
-  void panelQmlFiveHourFallsBackToText ();
+  void panelQmlPopupStatusTextStaysLean ();
   void panelQmlDockWidgetUsesOneFiveHourRingPerProvider ();
   void cmakeUsesQtNetworkWithoutWebSockets ();
   void directProviderUsesOfficialEndpoints ();
@@ -1316,7 +1316,8 @@ ProviderRegistryTest::panelQmlHasContextMenuSettings ()
   QVERIFY (qml.contains (QStringLiteral ("import Qt.labs.platform 1.1 as LP")));
   QVERIFY (qml.contains (QStringLiteral ("acceptedButtons: Qt.RightButton")));
   QVERIFY (qml.contains (QStringLiteral ("LP.Menu")));
-  // The popup keeps a secondary entry.
+  // The popup keeps a secondary entry: an icon-only gear button.
+  QVERIFY (qml.contains (QStringLiteral ("preferences-system")));
   QVERIFY (qml.contains (QStringLiteral ("Applet.showSettings")));
 }
 
@@ -1327,6 +1328,9 @@ ProviderRegistryTest::panelQmlRingCountFollowsPerPlanVisibility ()
   QVERIFY (qml.contains (QStringLiteral ("taskbarSnapshots")));
   QVERIFY (qml.contains (QStringLiteral ("s.visible !== false")));
   QVERIFY (qml.contains (QStringLiteral ("root.taskbarSnapshots[index]")));
+  // The popup lists the same plans as the taskbar, not every account.
+  QVERIFY (qml.contains (QStringLiteral ("model: root.taskbarSnapshots")));
+  QVERIFY (!qml.contains (QStringLiteral ("model: root.quotaSnapshots")));
 }
 
 void
@@ -1444,12 +1448,17 @@ ProviderRegistryTest::panelQmlHasNoExtensionPairingUi ()
 }
 
 void
-ProviderRegistryTest::panelQmlFiveHourFallsBackToText ()
+ProviderRegistryTest::panelQmlPopupStatusTextStaysLean ()
 {
   const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
-  QVERIFY (qml.contains (QStringLiteral ("fiveHourRemainingRatio")));
-  QVERIFY (qml.contains (QStringLiteral ("fiveHourBalanceText")));
+  // Quota capacity stays in the card as progress bars; the text below them
+  // is lean: update time, or for failed entries a one-line reason.
+  QVERIFY (qml.contains (QStringLiteral ("ProgressBar")));
+  QVERIFY (qml.contains (QStringLiteral ("5-hour quota: %1")));
+  QVERIFY (qml.contains (QStringLiteral ("Weekly quota: %1")));
   QVERIFY (qml.contains (QStringLiteral ("fiveHourQuotaPercent")));
+  QVERIFY (qml.contains (QStringLiteral ("Cannot update: %1")));
+  QVERIFY (!qml.contains (QStringLiteral ("parts.join")));
 }
 
 void
