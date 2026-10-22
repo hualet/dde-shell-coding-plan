@@ -1,3 +1,9 @@
+dde-shell-coding-plan (1.0.3-1) unstable; urgency=medium
+
+  * Add a NoDisplay desktop file so the store icon check resolves.
+
+ -- HualetWang <mr.asianwang@gmail.com>  Thu, 22 Oct 2026 18:38:00 +0800
+
 dde-shell-coding-plan (1.0.2-1) unstable; urgency=medium
 
   * Install hicolor icons so the UOS app store package check passes.

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Token Plan
+Name[zh_CN]=词元计划
+GenericName=AI Coding Plan Quotas
+GenericName[zh_CN]=AI 编程计划额度
+Comment=Taskbar applet showing remaining AI coding plan quotas
+Comment[zh_CN]=任务栏插件，显示各 AI 编程订阅的剩余额度
+Exec=/bin/true
+Icon=dde-shell-coding-plan
+Categories=Utility;
+Terminal=false
+NoDisplay=true

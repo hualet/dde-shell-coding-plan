@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(dde-coding-plan VERSION 1.0.2 LANGUAGES CXX)
+project(dde-coding-plan VERSION 1.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -65,11 +65,17 @@ ds_install_package(
     TARGET ds-coding-plan-applet
 )
 
-# hicolor icons: required by the UOS app store package check and used by
-# desktop environments for any future launcher entry.
+# hicolor icons + desktop file: the UOS app store package check requires a
+# .desktop file whose Icon= entry resolves inside the package. NoDisplay
+# keeps this taskbar plugin out of the app launcher.
 install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/hicolor/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor
+)
+
+install(
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/package/dde-shell-coding-plan.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
 # lupdate/lrelease the plugin's user-visible strings (package QML + applet
