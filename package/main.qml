@@ -63,9 +63,9 @@ AppletItem {
         return "#aeb6c2"
     }
 
-    // Ring letters that would collide by name: Claude ("C" like Codex) is
-    // shown by its maker's initial.
-    readonly property var providerInitials: ({ "claude": "A" })
+    // Ring letters that would collide by name: Claude ("C" like Codex) shows
+    // its maker's initial; Grok ("G" like GLM Coding) shows xAI's.
+    readonly property var providerInitials: ({ "claude": "A", "grok": "X" })
 
     function providerInitial(snapshot) {
         if (snapshot && root.providerInitials[snapshot.providerId])

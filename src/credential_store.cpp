@@ -83,6 +83,17 @@ CredentialStore::zcodeConfigPath ()
 }
 
 QString
+CredentialStore::grokAuthPath ()
+{
+  const QString grokHome = qEnvironmentVariable ("GROK_HOME");
+  if (!grokHome.isEmpty ())
+    {
+      return QDir (grokHome).filePath (QStringLiteral ("auth.json"));
+    }
+  return QDir::home ().filePath (QStringLiteral (".grok/auth.json"));
+}
+
+QString
 CredentialStore::zcodeSettingPath ()
 {
   return QDir::home ().filePath (QStringLiteral (".zcode/v2/setting.json"));
@@ -225,6 +236,65 @@ CredentialStore::readGlmPlanFromZCode (const QString &configPath,
   if (!result.apiKey.isEmpty () && url.isValid () && !url.host ().isEmpty ())
     {
       result.rootUrl = QStringLiteral ("%1://%2").arg (url.scheme (), url.host ());
+      result.present = true;
+    }
+  return result;
+}
+
+GrokCredentials
+CredentialStore::readGrokCredentials (const QString &path)
+{
+  GrokCredentials result;
+  // auth.json maps "<oidc_issuer>::<client_id>" to a session object; several
+  // sign-ins can coexist, so pick the one refreshed most recently.
+  const QJsonObject root = loadJsonObject (path);
+  qint64 bestExpiry = -1;
+  for (const QString &accountKey : root.keys ())
+    {
+      const QJsonObject entry = root.value (accountKey).toObject ();
+      const QString key = nonEmpty (entry.value (QStringLiteral ("key")).toString ());
+      if (key.isEmpty ())
+        {
+          continue;
+        }
+      qint64 expiresAtMs = 0;
+      const QString expiresAt = entry.value (QStringLiteral ("expires_at")).toString ();
+      if (!expiresAt.isEmpty ())
+        {
+          // Grok writes RFC 3339 with up to nanosecond precision; Qt's ISO
+          // parser stops at milliseconds, so trim the fraction.
+          const int dot = expiresAt.indexOf (QLatin1Char ('.'));
+          QString normalized = expiresAt;
+          if (dot >= 0)
+            {
+              int end = dot + 1;
+              while (end < normalized.size ()
+                     && normalized.at (end).isDigit ())
+                {
+                  ++end;
+                }
+              const int fractionLength = end - dot - 1;
+              if (fractionLength > 3)
+                {
+                  normalized = normalized.left (dot + 4)
+                      + normalized.mid (end);
+                }
+            }
+          const QDateTime parsed = QDateTime::fromString (normalized,
+                                                           Qt::ISODateWithMs);
+          if (parsed.isValid ())
+            {
+              expiresAtMs = parsed.toMSecsSinceEpoch ();
+            }
+        }
+      if (expiresAtMs < bestExpiry)
+        {
+          continue;
+        }
+      bestExpiry = expiresAtMs;
+      result.accessToken = key;
+      result.userId = nonEmpty (entry.value (QStringLiteral ("user_id")).toString ());
+      result.expiresAtMs = expiresAtMs;
       result.present = true;
     }
   return result;

@@ -44,6 +44,14 @@ struct GlmPlanCredentials
   bool present = false;
 };
 
+struct GrokCredentials
+{
+  QString accessToken;
+  QString userId;
+  qint64 expiresAtMs = 0;
+  bool present = false;
+};
+
 namespace CredentialStore
 {
 QString codexAuthPath ();
@@ -52,6 +60,7 @@ QString claudeCredentialsPath ();
 QString claudeDesktopUsagePath ();
 QString zcodeConfigPath ();
 QString zcodeSettingPath ();
+QString grokAuthPath ();
 
 CodexCredentials readCodexCredentials (const QString &path);
 KimiCredentials readKimiCredentials (const QString &path);
@@ -59,4 +68,5 @@ ClaudeCredentials readClaudeCredentials (const QString &path);
 QJsonObject readJsonFile (const QString &path);
 GlmPlanCredentials readGlmPlanFromZCode (const QString &configPath,
                                          const QString &settingPath = QString ());
+GrokCredentials readGrokCredentials (const QString &path);
 }

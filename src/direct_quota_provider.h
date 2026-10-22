@@ -76,6 +76,7 @@ private:
   void fetchCodex (const QuotaRequest &request);
   void fetchClaude (const QuotaRequest &request);
   void fetchKimi (const QuotaRequest &request);
+  void fetchGrok (const QuotaRequest &request);
   void fetchGlm (const QuotaRequest &request, const QString &key,
                  const QString &rootUrl, const QString &failoverRoot);
   void fetchMinimax (const QuotaRequest &request);

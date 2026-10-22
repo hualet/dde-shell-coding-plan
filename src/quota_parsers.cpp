@@ -432,6 +432,43 @@ QuotaParsers::parseKimiUsages (const QJsonObject &root,
 }
 
 QuotaSnapshot
+QuotaParsers::parseGrokBilling (const QJsonObject &root,
+                                const QuotaSnapshot &snapshot)
+{
+  QuotaSnapshot result = snapshot;
+
+  // {"config": {"creditUsagePercent": 26, "currentPeriod":
+  //  {"type": "USAGE_PERIOD_TYPE_WEEKLY", "start": "...", "end": "..."}}}
+  // Grok reports a single usage period (weekly for SuperGrok), so only the
+  // weekly window fills; there is no 5-hour window to read.
+  const QJsonObject config = root.value (QStringLiteral ("config")).toObject ();
+  const double usedPercent = numberOrNaN (
+      config.value (QStringLiteral ("creditUsagePercent")));
+  if (std::isnan (usedPercent))
+    {
+      result.status = SnapshotStatus::ParseError;
+      result.message = ParserTr::tr ("No quota data in the Grok response.");
+      return result;
+    }
+
+  Window weekly;
+  weekly.usedPercent = clampPercent (usedPercent);
+  const QJsonObject period = config.value (QStringLiteral ("currentPeriod")).toObject ();
+  const QDateTime resetAt = QDateTime::fromString (
+      period.value (QStringLiteral ("end")).toString (), Qt::ISODateWithMs);
+  if (resetAt.isValid ())
+    {
+      weekly.resetAt = resetAt;
+    }
+  weekly.valid = true;
+  applyWindow (result, weekly, false);
+
+  result.status = SnapshotStatus::Ok;
+  result.updatedAt = QDateTime::currentDateTimeUtc ();
+  return result;
+}
+
+QuotaSnapshot
 QuotaParsers::parseGlmQuotaLimit (const QJsonObject &root,
                                   const QuotaSnapshot &snapshot)
 {

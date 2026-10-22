@@ -97,6 +97,13 @@ ProviderRegistry::createDefault ()
         QStringLiteral ("https://www.kimi.com/code/console") });
 
   registry.addProvider (
+      { QStringLiteral ("grok"),
+        QStringLiteral ("Grok"),
+        SourceType::OfficialApi,
+        QStringLiteral ("https://accounts.x.ai/sign-in"),
+        QStringLiteral ("https://grok.com/supergrok") });
+
+  registry.addProvider (
       { QStringLiteral ("glm-coding"),
         QStringLiteral ("GLM Coding"),
         SourceType::OfficialApi,

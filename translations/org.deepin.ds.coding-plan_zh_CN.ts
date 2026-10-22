@@ -121,6 +121,14 @@
         <source>No MiniMax API key set.</source>
         <translation>未设置 MiniMax API Key。</translation>
     </message>
+    <message>
+        <source>No Grok sign-in found; please run grok login.</source>
+        <translation>未检测到 Grok 登录，请先运行 grok login。</translation>
+    </message>
+    <message>
+        <source>The Grok sign-in expired; run grok once to refresh the sign-in.</source>
+        <translation>Grok 登录已过期，请运行一次 grok 刷新登录。</translation>
+    </message>
 </context>
 <context>
     <name>ManualAccountsWidget</name>
@@ -221,6 +229,10 @@
     <message>
         <source>Unlimited</source>
         <translation>不限量</translation>
+    </message>
+    <message>
+        <source>No quota data in the Grok response.</source>
+        <translation>Grok 响应中没有额度数据。</translation>
     </message>
 </context>
 <context>

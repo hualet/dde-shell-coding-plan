@@ -45,6 +45,7 @@ private slots:
   void claudeCredentialsReaderReadsOAuthBlock ();
   void zcodeReaderPicksActiveCodingPlanKey ();
   void zcodeReaderFallsBackToAnyCodingPlanKey ();
+  void grokCredentialsReaderPicksFreshestSignIn ();
 
   // Parsers (fixtures shaped after the vendors' real replies)
   void codexParserMapsWindowsAndPlan ();
@@ -57,6 +58,8 @@ private slots:
   void claudeDesktopHistoryFlagsStaleSample ();
   void kimiParserMapsWeeklyAndSession ();
   void kimiParserHandlesStringNumbers ();
+  void grokParserMapsWeeklyCredits ();
+  void grokParserRejectsEmptyReply ();
   void glmParserMapsUnitWindows ();
   void glmParserRejectsFailedReply ();
   void glmParserClassifiesLoneWindowByLength ();
@@ -105,6 +108,7 @@ private slots:
   void directProviderSendsCodexCliIdentity ();
   void kimiPolicyIsReadOnly ();
   void claudePolicyIsReadOnly ();
+  void grokPolicyIsReadOnly ();
   void directProviderFailsOverToFullGlmUrl ();
   void directProviderGuardsCodexTokenRotation ();
   void directProviderClearsInFlightOnSyncFailure ();
@@ -197,12 +201,13 @@ ProviderRegistryTest::builtInProvidersCoverMvpPlatforms ()
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
 
   const QStringList providerIds = registry.providerIds ();
-  QCOMPARE (providerIds.size (), 5);
+  QCOMPARE (providerIds.size (), 6);
   QVERIFY (providerIds.contains (QStringLiteral ("codex")));
   QVERIFY (providerIds.contains (QStringLiteral ("claude")));
   QVERIFY (providerIds.contains (QStringLiteral ("kimi-code")));
   QVERIFY (providerIds.contains (QStringLiteral ("glm-coding")));
   QVERIFY (providerIds.contains (QStringLiteral ("minimax")));
+  QVERIFY (providerIds.contains (QStringLiteral ("grok")));
 
   for (const QString &providerId : providerIds)
     {
@@ -278,6 +283,8 @@ ProviderRegistryTest::providerUrlsMatchOfficialConsoles ()
             QStringLiteral ("https://bigmodel.cn/coding-plan/personal/usage"));
   QCOMPARE (registry.provider (QStringLiteral ("minimax")).consoleUrl,
             QStringLiteral ("https://platform.minimaxi.com/user-center/billing"));
+  QCOMPARE (registry.provider (QStringLiteral ("grok")).consoleUrl,
+            QStringLiteral ("https://grok.com/supergrok"));
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +409,41 @@ ProviderRegistryTest::zcodeReaderFallsBackToAnyCodingPlanKey ()
 
   writeFile (config, R"({"provider": {"builtin:zai-coding-plan": {"options": {"apiKey": "", "baseURL": "https://api.z.ai"}}}})");
   QVERIFY (!CredentialStore::readGlmPlanFromZCode (config).present);
+}
+
+void
+ProviderRegistryTest::grokCredentialsReaderPicksFreshestSignIn ()
+{
+  QTemporaryDir dir;
+  const QString path = dir.filePath (QStringLiteral ("auth.json"));
+  writeFile (path, R"({
+    "https://auth.x.ai::old-client": {
+      "key": "stale-key", "auth_mode": "oidc", "user_id": "u-old",
+      "expires_at": "2026-10-22T11:06:53.490850318Z"
+    },
+    "https://auth.x.ai::active-client": {
+      "key": "fresh-key", "auth_mode": "oidc", "user_id": "u-fresh",
+      "email": "a@b.c", "refresh_token": "rt",
+      "expires_at": "2026-10-22T17:06:53.490850318Z"
+    },
+    "https://auth.x.ai::signed-out": {
+      "auth_mode": "oidc", "expires_at": "2026-11-01T00:00:00Z"
+    }
+  })");
+
+  const GrokCredentials credentials = CredentialStore::readGrokCredentials (path);
+  QVERIFY (credentials.present);
+  // The entry refreshed most recently wins; entries without a key never do.
+  QCOMPARE (credentials.accessToken, QStringLiteral ("fresh-key"));
+  QCOMPARE (credentials.userId, QStringLiteral ("u-fresh"));
+  // Nanosecond precision is trimmed to what Qt's ISO parser accepts.
+  QCOMPARE (credentials.expiresAtMs,
+            QDateTime::fromString (QStringLiteral ("2026-10-22T17:06:53.490Z"),
+                                   Qt::ISODateWithMs).toMSecsSinceEpoch ());
+
+  const GrokCredentials missing = CredentialStore::readGrokCredentials (
+      dir.filePath (QStringLiteral ("none.json")));
+  QVERIFY (!missing.present);
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +625,50 @@ ProviderRegistryTest::kimiParserHandlesStringNumbers ()
   const QuotaSnapshot snapshot = QuotaParsers::parseKimiUsages (root, QuotaSnapshot ());
   QCOMPARE (snapshot.status, SnapshotStatus::Ok);
   QCOMPARE (snapshot.remainingRatio, 0.25); // (200-50)/200 used
+}
+
+void
+ProviderRegistryTest::grokParserMapsWeeklyCredits ()
+{
+  const QJsonObject root = parseJson (R"({
+    "config": {
+      "currentPeriod": {"type": "USAGE_PERIOD_TYPE_WEEKLY",
+        "start": "2026-10-19T13:05:37.401+00:00",
+        "end": "2026-10-26T13:05:37.401+00:00"},
+      "creditUsagePercent": 26.0,
+      "productUsage": [{"product": "GrokBot", "usagePercent": 23.0}],
+      "isUnifiedBillingUser": true,
+      "prepaidBalance": {"val": 0}
+    }
+  })");
+
+  QuotaSnapshot templateSnapshot;
+  templateSnapshot.providerId = QStringLiteral ("grok");
+  const QuotaSnapshot snapshot = QuotaParsers::parseGrokBilling (root, templateSnapshot);
+  QCOMPARE (snapshot.status, SnapshotStatus::Ok);
+  // Grok reports one weekly usage period; there is no 5-hour window.
+  QCOMPARE (snapshot.remainingRatio, 0.74);
+  QVERIFY (snapshot.fiveHourRemainingRatio < 0);
+  QCOMPARE (snapshot.balanceText, QStringLiteral ("74%"));
+  QCOMPARE (snapshot.resetAt.toUTC (),
+            QDateTime::fromString (QStringLiteral ("2026-10-26T13:05:37.401+00:00"),
+                                   Qt::ISODateWithMs).toUTC ());
+
+  // A saturated reading clamps instead of going negative.
+  const QuotaSnapshot capped = QuotaParsers::parseGrokBilling (
+      parseJson (R"({"config": {"creditUsagePercent": 130}})"), QuotaSnapshot ());
+  QCOMPARE (capped.status, SnapshotStatus::Ok);
+  QCOMPARE (capped.remainingRatio, 0.0);
+}
+
+void
+ProviderRegistryTest::grokParserRejectsEmptyReply ()
+{
+  const QuotaSnapshot snapshot = QuotaParsers::parseGrokBilling (
+      parseJson (R"({"config": {"currentPeriod": {"type": "USAGE_PERIOD_TYPE_WEEKLY"}}})"),
+      QuotaSnapshot ());
+  QCOMPARE (snapshot.status, SnapshotStatus::ParseError);
+  QVERIFY (!snapshot.message.isEmpty ());
 }
 
 void
@@ -1469,6 +1555,8 @@ ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
   QVERIFY (qml.contains (QStringLiteral ("root.providerInitial(parent.snapshot)")));
   // Claude and Codex would both be "C"; Claude shows "A".
   QVERIFY (qml.contains (QStringLiteral ("\"claude\": \"A\"")));
+  // Grok and GLM Coding would both be "G"; Grok shows xAI's "X".
+  QVERIFY (qml.contains (QStringLiteral ("\"grok\": \"X\"")));
 }
 
 void
@@ -1502,6 +1590,8 @@ ProviderRegistryTest::directProviderUsesOfficialEndpoints ()
   QVERIFY (source.contains (QStringLiteral ("/api/monitor/usage/quota/limit")));
   QVERIFY (source.contains (QStringLiteral (
       "https://api.minimaxi.com/v1/token_plan/remains")));
+  QVERIFY (source.contains (QStringLiteral (
+      "https://cli-chat-proxy.grok.com/v1/billing?format=credits")));
 }
 
 void
@@ -1542,6 +1632,23 @@ ProviderRegistryTest::claudePolicyIsReadOnly ()
   QVERIFY (!claudeFetch.contains (QStringLiteral ("write")));
   QVERIFY (!claudeFetch.contains (QStringLiteral ("Verb::Post")));
   QVERIFY (!claudeFetch.contains (QStringLiteral ("refreshToken")));
+}
+
+void
+ProviderRegistryTest::grokPolicyIsReadOnly ()
+{
+  const QString source = readFile (
+      QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
+  // The Grok CLI owns its OAuth refresh (the refresh token rotates); an
+  // expired access token only asks the user to rerun the CLI.
+  QVERIFY (source.contains (QStringLiteral ("run grok once to refresh")));
+  const int start = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchGrok"));
+  const int end = source.indexOf (QStringLiteral ("DirectQuotaProvider::fetchGlm"));
+  QVERIFY (start > 0 && end > start);
+  const QString grokFetch = source.mid (start, end - start);
+  QVERIFY (!grokFetch.contains (QStringLiteral ("write")));
+  QVERIFY (!grokFetch.contains (QStringLiteral ("Verb::Post")));
+  QVERIFY (!grokFetch.contains (QStringLiteral ("refreshToken")));
 }
 
 void

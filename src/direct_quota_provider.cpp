@@ -39,6 +39,12 @@ constexpr auto kGlmQuotaPath = "/api/monitor/usage/quota/limit";
 constexpr auto kGlmDefaultRoot = "https://open.bigmodel.cn";
 constexpr auto kGlmFailoverRoot = "https://api.z.ai";
 
+// Grok's /usage modal reads the credit balance off the same proxy the CLI
+// talks to; identify the way grok-shell does so the backend serves it.
+constexpr auto kGrokBillingUrl = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+constexpr auto kGrokVersion = "1.0.67";
+constexpr auto kGrokUserAgent = "grok-shell/1.0.67 (linux; x86_64)";
+
 bool
 isErrorStatus (SnapshotStatus status)
 {
@@ -71,7 +77,8 @@ QStringList
 DirectQuotaProvider::detectableProviderIds ()
 {
   return { QStringLiteral ("codex"), QStringLiteral ("claude"),
-           QStringLiteral ("kimi-code"), QStringLiteral ("glm-coding") };
+           QStringLiteral ("kimi-code"), QStringLiteral ("glm-coding"),
+           QStringLiteral ("grok") };
 }
 
 bool
@@ -99,6 +106,11 @@ DirectQuotaProvider::credentialsPresent (const QString &providerId)
       return CredentialStore::readGlmPlanFromZCode (
                  CredentialStore::zcodeConfigPath (),
                  CredentialStore::zcodeSettingPath ()).present;
+    }
+  if (providerId == QStringLiteral ("grok"))
+    {
+      return CredentialStore::readGrokCredentials (
+                 CredentialStore::grokAuthPath ()).present;
     }
   return false;
 }
@@ -175,6 +187,10 @@ DirectQuotaProvider::refreshEntry (const QuotaRequest &request)
   else if (request.providerId == QStringLiteral ("kimi-code"))
     {
       fetchKimi (request);
+    }
+  else if (request.providerId == QStringLiteral ("grok"))
+    {
+      fetchGrok (request);
     }
   else if (request.providerId == QStringLiteral ("glm-coding"))
     {
@@ -563,6 +579,57 @@ DirectQuotaProvider::fetchKimi (const QuotaRequest &request)
   execute (request, networkRequest, Verb::Get, QByteArray (), QString (),
            [this](const QuotaRequest &req, int, const QJsonObject &json) {
              finish (req, QuotaParsers::parseKimiUsages (json, snapshotTemplate (req)));
+           });
+}
+
+void
+DirectQuotaProvider::fetchGrok (const QuotaRequest &request)
+{
+  const GrokCredentials credentials = CredentialStore::readGrokCredentials (
+      CredentialStore::grokAuthPath ());
+  if (!credentials.present)
+    {
+      emit refreshFailed (request.entryId,
+                          tr ("No Grok sign-in found; please run grok login."),
+                          SnapshotStatus::AuthError);
+      return;
+    }
+
+  // Read-only policy: the Grok CLI owns token refresh (it rotates the
+  // refresh token); an expired access token only asks the user to rerun it.
+  const qint64 jwtExpiry = QuotaParsers::jwtExpirySeconds (credentials.accessToken);
+  const qint64 expiresAtMs = jwtExpiry > 0 ? jwtExpiry * 1000
+                                           : credentials.expiresAtMs;
+  if (expiresAtMs > 0
+      && expiresAtMs - QDateTime::currentMSecsSinceEpoch () <= 5000)
+    {
+      emit refreshFailed (request.entryId,
+                          tr ("The Grok sign-in expired; run grok once to refresh the sign-in."),
+                          SnapshotStatus::AuthError);
+      return;
+    }
+
+  QNetworkRequest networkRequest (QUrl (QString::fromLatin1 (kGrokBillingUrl)));
+  networkRequest.setRawHeader (QByteArrayLiteral ("Authorization"),
+                               (QStringLiteral ("Bearer ")
+                                + credentials.accessToken).toUtf8 ());
+  networkRequest.setRawHeader (QByteArrayLiteral ("x-xai-token-auth"),
+                               QByteArrayLiteral ("xai-grok-cli"));
+  if (!credentials.userId.isEmpty ())
+    {
+      networkRequest.setRawHeader (QByteArrayLiteral ("x-userid"),
+                                   credentials.userId.toUtf8 ());
+    }
+  networkRequest.setRawHeader (QByteArrayLiteral ("x-grok-client-version"),
+                               QByteArrayLiteral (kGrokVersion));
+  networkRequest.setHeader (QNetworkRequest::UserAgentHeader,
+                            QString::fromLatin1 (kGrokUserAgent));
+  networkRequest.setAttribute (QNetworkRequest::RedirectPolicyAttribute,
+                               QNetworkRequest::NoLessSafeRedirectPolicy);
+
+  execute (request, networkRequest, Verb::Get, QByteArray (), QString (),
+           [this](const QuotaRequest &req, int, const QJsonObject &json) {
+             finish (req, QuotaParsers::parseGrokBilling (json, snapshotTemplate (req)));
            });
 }
 
