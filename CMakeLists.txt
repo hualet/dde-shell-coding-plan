@@ -24,6 +24,8 @@ add_library(coding-plan-core STATIC
     src/quota_parsers.cpp
     src/direct_quota_provider.h
     src/direct_quota_provider.cpp
+    src/system_proxy.h
+    src/system_proxy.cpp
 )
 
 target_include_directories(coding-plan-core PUBLIC

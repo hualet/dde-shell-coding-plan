@@ -6,6 +6,7 @@
 #include "direct_quota_provider.h"
 #include "providerregistry.h"
 #include "quota_parsers.h"
+#include "system_proxy.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -17,6 +18,7 @@
 #include <QSettings>
 #include <QSignalSpy>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -112,6 +114,9 @@ private slots:
   void directProviderFailsOverToFullGlmUrl ();
   void directProviderGuardsCodexTokenRotation ();
   void directProviderClearsInFlightOnSyncFailure ();
+  void systemProxyParsesGSettingsManualAndDeepinSchemas ();
+  void systemProxyResolvesBySchemeAndIgnoreList ();
+  void systemProxyFallbackRespectsEnvAndCachesLoader ();
   void modelHasNoSelfTriggeredSettingsWatcher ();
   void appletStartsAutoRefresh ();
 
@@ -1691,6 +1696,205 @@ ProviderRegistryTest::directProviderClearsInFlightOnSyncFailure ()
   provider.refreshEntry (request);
   provider.refreshEntry (request);
   QCOMPARE (failed.count (), 2);
+}
+
+void
+ProviderRegistryTest::systemProxyParsesGSettingsManualAndDeepinSchemas ()
+{
+  const QString gnomeOutput = QString::fromUtf8 (R"(
+org.gnome.system.proxy autoconfig-url ''
+org.gnome.system.proxy ignore-hosts ['localhost', '127.0.0.1', '192.168.0.0/16', '::1', '*.local']
+org.gnome.system.proxy mode 'manual'
+org.gnome.system.proxy use-same-proxy true
+org.gnome.system.proxy.http authentication-password 'p\'ass'
+org.gnome.system.proxy.http authentication-user 'alice'
+org.gnome.system.proxy.http enabled false
+org.gnome.system.proxy.http host '127.0.0.1'
+org.gnome.system.proxy.http port 7890
+org.gnome.system.proxy.http use-authentication true
+org.gnome.system.proxy.https host '127.0.0.1'
+org.gnome.system.proxy.https port 7891
+org.gnome.system.proxy.socks host '127.0.0.1'
+org.gnome.system.proxy.socks port 7892
+)");
+  const SystemProxy::GSettingsProxyConfig cfg
+      = SystemProxy::parseGSettingsOutput (gnomeOutput);
+  QCOMPARE (cfg.mode, QStringLiteral ("manual"));
+  QCOMPARE (cfg.useSameProxy, true);
+  QCOMPARE (cfg.ignoreHosts,
+            QStringList ({ QStringLiteral ("localhost"), QStringLiteral ("127.0.0.1"),
+                           QStringLiteral ("192.168.0.0/16"), QStringLiteral ("::1"),
+                           QStringLiteral ("*.local") }));
+  QCOMPARE (cfg.http.host, QStringLiteral ("127.0.0.1"));
+  QCOMPARE (cfg.http.port, quint16 (7890));
+  QCOMPARE (cfg.http.useAuth, true);
+  QCOMPARE (cfg.http.user, QStringLiteral ("alice"));
+  QCOMPARE (cfg.http.password, QStringLiteral ("p'ass"));
+  QCOMPARE (cfg.https.port, quint16 (7891));
+  QCOMPARE (cfg.socks.port, quint16 (7892));
+
+  // Deepin wrapper schema + empty typed GVariant array.
+  const QString deepinOutput = QString::fromUtf8 (R"(
+com.deepin.wrap.gnome.system.proxy ignore-hosts @as []
+com.deepin.wrap.gnome.system.proxy mode 'manual'
+com.deepin.wrap.gnome.system.proxy use-same-proxy false
+com.deepin.wrap.gnome.system.proxy.socks host '127.0.0.1'
+com.deepin.wrap.gnome.system.proxy.socks port 1080
+)");
+  const SystemProxy::GSettingsProxyConfig deepinCfg
+      = SystemProxy::parseGSettingsOutput (deepinOutput);
+  QCOMPARE (deepinCfg.mode, QStringLiteral ("manual"));
+  QCOMPARE (deepinCfg.useSameProxy, false);
+  QVERIFY (deepinCfg.ignoreHosts.isEmpty ());
+  QVERIFY (!deepinCfg.http.isValid ());
+  QVERIFY (!deepinCfg.https.isValid ());
+  QCOMPARE (deepinCfg.socks.host, QStringLiteral ("127.0.0.1"));
+  QCOMPARE (deepinCfg.socks.port, quint16 (1080));
+}
+
+void
+ProviderRegistryTest::systemProxyResolvesBySchemeAndIgnoreList ()
+{
+  SystemProxy::GSettingsProxyConfig cfg;
+  cfg.mode = QStringLiteral ("none");
+  cfg.http.host = QStringLiteral ("127.0.0.1");
+  cfg.http.port = 7890;
+
+  const QNetworkProxyQuery httpsQuery (QUrl (QStringLiteral ("https://chatgpt.com/backend-api/wham/usage")));
+  const QNetworkProxyQuery httpQuery (QUrl (QStringLiteral ("http://example.com/")));
+
+  // Mode "none" always returns NoProxy.
+  QCOMPARE (SystemProxy::resolveFromConfig (httpsQuery, cfg).first ().type (),
+            QNetworkProxy::NoProxy);
+
+  // Manual + use-same-proxy uses HTTP proxy (with auth) for HTTPS too.
+  cfg.mode = QStringLiteral ("manual");
+  cfg.useSameProxy = true;
+  cfg.http.useAuth = true;
+  cfg.http.user = QStringLiteral ("bob");
+  cfg.http.password = QStringLiteral ("secret");
+  cfg.https.host = QStringLiteral ("127.0.0.1");
+  cfg.https.port = 8443;
+  cfg.socks.host = QStringLiteral ("127.0.0.1");
+  cfg.socks.port = 1080;
+  cfg.ignoreHosts = { QStringLiteral ("localhost"), QStringLiteral ("127.0.0.1"),
+                      QStringLiteral ("192.168.0.0/16"), QStringLiteral ("::1"),
+                      QStringLiteral ("*.local"), QStringLiteral ("<local>") };
+
+  const QList<QNetworkProxy> sameProxies
+      = SystemProxy::resolveFromConfig (httpsQuery, cfg);
+  QCOMPARE (sameProxies.size (), 1);
+  QCOMPARE (sameProxies.first ().type (), QNetworkProxy::HttpProxy);
+  QCOMPARE (sameProxies.first ().hostName (), QStringLiteral ("127.0.0.1"));
+  QCOMPARE (sameProxies.first ().port (), quint16 (7890));
+  QCOMPARE (sameProxies.first ().user (), QStringLiteral ("bob"));
+  QCOMPARE (sameProxies.first ().password (), QStringLiteral ("secret"));
+
+  // Separate proxies per scheme when use-same-proxy is false.
+  cfg.useSameProxy = false;
+  QCOMPARE (SystemProxy::resolveFromConfig (httpsQuery, cfg).first ().port (),
+            quint16 (8443));
+  QCOMPARE (SystemProxy::resolveFromConfig (httpQuery, cfg).first ().port (),
+            quint16 (7890));
+
+  // Falls back to SOCKS5 when HTTPS proxy is unset.
+  cfg.https = {};
+  const QNetworkProxy socksFallback
+      = SystemProxy::resolveFromConfig (httpsQuery, cfg).first ();
+  QCOMPARE (socksFallback.type (), QNetworkProxy::Socks5Proxy);
+  QCOMPARE (socksFallback.port (), quint16 (1080));
+
+  // Ignore-hosts matches exact, CIDR, IPv6, wildcard, and <local>, not external hosts.
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("localhost"), cfg.ignoreHosts));
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("127.0.0.1"), cfg.ignoreHosts));
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("192.168.42.7"), cfg.ignoreHosts));
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("[::1]"), cfg.ignoreHosts));
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("printer.local"), cfg.ignoreHosts));
+  QVERIFY (SystemProxy::hostMatchesIgnoreList (QStringLiteral ("intranet"), cfg.ignoreHosts));
+  QVERIFY (!SystemProxy::hostMatchesIgnoreList (QStringLiteral ("chatgpt.com"), cfg.ignoreHosts));
+  QVERIFY (!SystemProxy::hostMatchesIgnoreList (QStringLiteral ("notlocal.example.com"), cfg.ignoreHosts));
+
+  const QNetworkProxyQuery localQuery (QUrl (QStringLiteral ("https://192.168.1.10/api")));
+  QCOMPARE (SystemProxy::resolveFromConfig (localQuery, cfg).first ().type (),
+            QNetworkProxy::NoProxy);
+}
+
+void
+ProviderRegistryTest::systemProxyFallbackRespectsEnvAndCachesLoader ()
+{
+  const QStringList envNames = {
+    QStringLiteral ("http_proxy"), QStringLiteral ("https_proxy"),
+    QStringLiteral ("all_proxy"), QStringLiteral ("no_proxy"),
+    QStringLiteral ("HTTP_PROXY"), QStringLiteral ("HTTPS_PROXY"),
+    QStringLiteral ("ALL_PROXY"), QStringLiteral ("NO_PROXY"),
+    QStringLiteral ("XDG_CURRENT_DESKTOP"),
+  };
+  QHash<QString, QByteArray> savedEnv;
+  QSet<QString> wasSet;
+  for (const QString &name : envNames)
+    {
+      const QByteArray key = name.toLatin1 ();
+      if (qEnvironmentVariableIsSet (key.constData ()))
+        {
+          wasSet.insert (name);
+          savedEnv.insert (name, qgetenv (key.constData ()));
+        }
+    }
+  auto restore = qScopeGuard ([&]() {
+    for (const QString &name : envNames)
+      {
+        const QByteArray key = name.toLatin1 ();
+        if (wasSet.contains (name))
+          {
+            qputenv (key.constData (), savedEnv.value (name));
+          }
+        else
+          {
+            qunsetenv (key.constData ());
+          }
+      }
+  });
+
+  for (const QString &name : envNames)
+    {
+      qunsetenv (name.toLatin1 ().constData ());
+    }
+  qputenv ("XDG_CURRENT_DESKTOP", "DDE");
+
+  int loadCalls = 0;
+  SystemProxy::GSettingsProxyConfig fakeCfg;
+  fakeCfg.mode = QStringLiteral ("manual");
+  fakeCfg.useSameProxy = true;
+  fakeCfg.http.host = QStringLiteral ("127.0.0.1");
+  fakeCfg.http.port = 7890;
+
+  SystemProxy::FallbackProxyFactory factory ([&]() {
+    ++loadCalls;
+    return fakeCfg;
+  });
+
+  const QNetworkProxyQuery query (QUrl (QStringLiteral ("https://chatgpt.com/backend-api/wham/usage")));
+  const QList<QNetworkProxy> first = factory.queryProxy (query);
+  QCOMPARE (first.first ().type (), QNetworkProxy::HttpProxy);
+  QCOMPARE (first.first ().hostName (), QStringLiteral ("127.0.0.1"));
+  QCOMPARE (first.first ().port (), quint16 (7890));
+  QCOMPARE (loadCalls, 1);
+
+  // Second query within TTL reuses cached GSettings snapshot.
+  const QList<QNetworkProxy> second = factory.queryProxy (query);
+  QCOMPARE (second.first ().port (), quint16 (7890));
+  QCOMPARE (loadCalls, 1);
+
+  // Explicit proxy env var takes precedence over the GSettings fallback.
+  qputenv ("https_proxy", "http://127.0.0.1:9999");
+  const QList<QNetworkProxy> fromEnv = factory.queryProxy (query);
+  QCOMPARE (fromEnv.first ().type (), QNetworkProxy::HttpProxy);
+  QCOMPARE (fromEnv.first ().port (), quint16 (9999));
+
+  // DirectQuotaProvider wires the fallback factory on its QNetworkAccessManager.
+  const QString source = readFile (
+      QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
+  QVERIFY (source.contains (QStringLiteral ("FallbackProxyFactory")));
 }
 
 void

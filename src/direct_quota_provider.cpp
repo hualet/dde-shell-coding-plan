@@ -4,6 +4,7 @@
 #include "direct_quota_provider.h"
 #include "credential_store.h"
 #include "quota_parsers.h"
+#include "system_proxy.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -65,6 +66,10 @@ isErrorStatus (SnapshotStatus status)
 DirectQuotaProvider::DirectQuotaProvider (QObject *parent)
     : QObject (parent), m_registry (ProviderRegistry::createDefault ())
 {
+  // libproxy skips org.gnome.system.proxy when XDG_CURRENT_DESKTOP=DDE, so
+  // dde-shell misses desktop proxy settings unless env vars are exported.
+  m_nam.setProxyFactory (new SystemProxy::FallbackProxyFactory ());
+
   // Every request resolves into exactly one of the two signals; that is when
   // its entry may be fetched again.
   connect (this, &DirectQuotaProvider::refreshCompleted, this,
