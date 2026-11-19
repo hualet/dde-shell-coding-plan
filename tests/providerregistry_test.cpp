@@ -48,6 +48,7 @@ private slots:
   void zcodeReaderPicksActiveCodingPlanKey ();
   void zcodeReaderFallsBackToAnyCodingPlanKey ();
   void grokCredentialsReaderPicksFreshestSignIn ();
+  void antigravityCliDiscoveryHonorsEnvOverride ();
 
   // Parsers (fixtures shaped after the vendors' real replies)
   void codexParserMapsWindowsAndPlan ();
@@ -62,6 +63,8 @@ private slots:
   void kimiParserHandlesStringNumbers ();
   void grokParserMapsWeeklyCredits ();
   void grokParserRejectsEmptyReply ();
+  void antigravityParserMapsPoolsAndWindows ();
+  void antigravityParserRejectsFailureAndEmptyResponse ();
   void glmParserMapsUnitWindows ();
   void glmParserRejectsFailedReply ();
   void glmParserClassifiesLoneWindowByLength ();
@@ -117,6 +120,8 @@ private slots:
   void systemProxyParsesGSettingsManualAndDeepinSchemas ();
   void systemProxyResolvesBySchemeAndIgnoreList ();
   void systemProxyFallbackRespectsEnvAndCachesLoader ();
+  void systemProxyAppliesFallbackEnvVars ();
+  void directProviderFetchesAntigravityViaCli ();
   void modelHasNoSelfTriggeredSettingsWatcher ();
   void appletStartsAutoRefresh ();
 
@@ -206,13 +211,14 @@ ProviderRegistryTest::builtInProvidersCoverMvpPlatforms ()
   const ProviderRegistry registry = ProviderRegistry::createDefault ();
 
   const QStringList providerIds = registry.providerIds ();
-  QCOMPARE (providerIds.size (), 6);
+  QCOMPARE (providerIds.size (), 7);
   QVERIFY (providerIds.contains (QStringLiteral ("codex")));
   QVERIFY (providerIds.contains (QStringLiteral ("claude")));
   QVERIFY (providerIds.contains (QStringLiteral ("kimi-code")));
   QVERIFY (providerIds.contains (QStringLiteral ("glm-coding")));
   QVERIFY (providerIds.contains (QStringLiteral ("minimax")));
   QVERIFY (providerIds.contains (QStringLiteral ("grok")));
+  QVERIFY (providerIds.contains (QStringLiteral ("antigravity")));
 
   for (const QString &providerId : providerIds)
     {
@@ -290,6 +296,8 @@ ProviderRegistryTest::providerUrlsMatchOfficialConsoles ()
             QStringLiteral ("https://platform.minimaxi.com/user-center/billing"));
   QCOMPARE (registry.provider (QStringLiteral ("grok")).consoleUrl,
             QStringLiteral ("https://grok.com/supergrok"));
+  QCOMPARE (registry.provider (QStringLiteral ("antigravity")).consoleUrl,
+            QStringLiteral ("https://antigravity.google/"));
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +457,43 @@ ProviderRegistryTest::grokCredentialsReaderPicksFreshestSignIn ()
   const GrokCredentials missing = CredentialStore::readGrokCredentials (
       dir.filePath (QStringLiteral ("none.json")));
   QVERIFY (!missing.present);
+}
+
+void
+ProviderRegistryTest::antigravityCliDiscoveryHonorsEnvOverride ()
+{
+  const bool hadAgyBin = qEnvironmentVariableIsSet ("AGY_BIN");
+  const QByteArray savedAgyBin = qgetenv ("AGY_BIN");
+  auto restore = qScopeGuard ([&]() {
+    if (hadAgyBin)
+      {
+        qputenv ("AGY_BIN", savedAgyBin);
+      }
+    else
+      {
+        qunsetenv ("AGY_BIN");
+      }
+  });
+
+  QTemporaryDir dir;
+  const QString script = dir.filePath (QStringLiteral ("agy"));
+  writeFile (script, QStringLiteral ("#!/bin/sh\necho ok\n"));
+
+  // Non-executable file is ignored.
+  QVERIFY (QFile::setPermissions (script, QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+  qputenv ("AGY_BIN", script.toUtf8 ());
+  QVERIFY (CredentialStore::antigravityCliPath ().isEmpty ());
+  QVERIFY (!DirectQuotaProvider::credentialsPresent (QStringLiteral ("antigravity")));
+
+  // Executable override is detected.
+  QVERIFY (QFile::setPermissions (
+      script, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+  QCOMPARE (CredentialStore::antigravityCliPath (), script);
+  QVERIFY (DirectQuotaProvider::credentialsPresent (QStringLiteral ("antigravity")));
+
+  // Missing path disables detection.
+  qputenv ("AGY_BIN", dir.filePath (QStringLiteral ("missing-agy")).toUtf8 ());
+  QVERIFY (CredentialStore::antigravityCliPath ().isEmpty ());
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +719,112 @@ ProviderRegistryTest::grokParserRejectsEmptyReply ()
       QuotaSnapshot ());
   QCOMPARE (snapshot.status, SnapshotStatus::ParseError);
   QVERIFY (!snapshot.message.isEmpty ());
+}
+
+void
+ProviderRegistryTest::antigravityParserMapsPoolsAndWindows ()
+{
+  const QJsonObject root = parseJson (R"({
+    "conversation_id": "",
+    "status": "SUCCESS",
+    "response": "Gemini Models\tWeekly Limit Remaining\t96%\t2026-11-14T02:40:30Z\nGemini Models\tFive Hour Limit Remaining\t95%\t2026-11-07T15:00:09Z\nClaude and GPT models\tWeekly Limit Remaining\t100%\t2026-11-14T11:01:57Z\nClaude and GPT models\tFive Hour Limit Remaining\t100%\t2026-11-07T16:01:57Z\n",
+    "duration_seconds": 5.612,
+    "num_turns": 0
+  })");
+
+  QuotaSnapshot templateSnapshot;
+  templateSnapshot.providerId = QStringLiteral ("antigravity");
+  const QuotaSnapshot snapshot
+      = QuotaParsers::parseAntigravityUsage (root, templateSnapshot);
+  QCOMPARE (snapshot.status, SnapshotStatus::Ok);
+  // Tightest pool across Gemini and Claude/GPT wins per window.
+  QCOMPARE (snapshot.fiveHourRemainingRatio, 0.95);
+  QCOMPARE (snapshot.fiveHourBalanceText, QStringLiteral ("95%"));
+  QCOMPARE (snapshot.remainingRatio, 0.96);
+  QCOMPARE (snapshot.balanceText, QStringLiteral ("96%"));
+  QCOMPARE (snapshot.message, QStringLiteral ("Gemini Models"));
+  // 5-hour reset wins over weekly reset.
+  QCOMPARE (snapshot.resetAt.toUTC (),
+            QDateTime::fromString (QStringLiteral ("2026-11-07T15:00:09Z"),
+                                   Qt::ISODateWithMs).toUTC ());
+
+  // If Claude/GPT pool is lower (including 0% exhausted), it takes precedence.
+  const QJsonObject exhausted = parseJson (R"({
+    "status": "SUCCESS",
+    "response": "Gemini Models\tWeekly Limit Remaining\t80%\t2026-11-14T02:40:30Z\nGemini Models\tFive Hour Limit Remaining\t70%\t2026-11-07T15:00:09Z\nClaude and GPT models\tWeekly Limit Remaining\t40%\t2026-11-14T11:01:57Z\nClaude and GPT models\tFive Hour Limit Remaining\t0%\t2026-11-07T16:01:57Z\n"
+  })");
+  const QuotaSnapshot low = QuotaParsers::parseAntigravityUsage (exhausted, templateSnapshot);
+  QCOMPARE (low.status, SnapshotStatus::Ok);
+  QCOMPARE (low.fiveHourRemainingRatio, 0.0);
+  QCOMPARE (low.fiveHourBalanceText, QStringLiteral ("0%"));
+  QCOMPARE (low.remainingRatio, 0.40);
+  QCOMPARE (low.balanceText, QStringLiteral ("40%"));
+  QCOMPARE (low.message, QStringLiteral ("Claude and GPT models"));
+
+  // Structured command.data.groups payload (real agy -p /usage output) is
+  // preferred over the TSV response string.
+  const QJsonObject structured = parseJson (R"({
+    "status": "SUCCESS",
+    "response": "",
+    "command": {
+      "name": "usage",
+      "data": {
+        "groups": [
+          {
+            "name": "Gemini Models",
+            "buckets": [
+              {"id": "gemini-weekly", "name": "Weekly Limit Remaining", "window": "weekly",
+               "remaining_fraction": 0.90986, "reset_time": "2026-11-26T03:59:53Z"},
+              {"id": "gemini-5h", "name": "Five Hour Limit Remaining", "window": "5h",
+               "remaining_fraction": 0.74123, "reset_time": "2026-11-19T18:55:48Z"}
+            ]
+          },
+          {
+            "name": "Claude and GPT models",
+            "buckets": [
+              {"id": "3p-weekly", "name": "Weekly Limit Remaining", "window": "weekly",
+               "remaining_fraction": 1.0, "reset_time": "2026-11-26T15:31:51Z"},
+              {"id": "3p-5h", "name": "Five Hour Limit Remaining", "window": "5h",
+               "remaining_fraction": 1.0, "reset_time": "2026-11-19T20:31:51Z"}
+            ]
+          }
+        ]
+      }
+    }
+  })");
+  const QuotaSnapshot fromGroups
+      = QuotaParsers::parseAntigravityUsage (structured, templateSnapshot);
+  QCOMPARE (fromGroups.status, SnapshotStatus::Ok);
+  QVERIFY (std::abs (fromGroups.fiveHourRemainingRatio - 0.74123) < 1e-4);
+  QCOMPARE (fromGroups.fiveHourBalanceText, QStringLiteral ("74%"));
+  QVERIFY (std::abs (fromGroups.remainingRatio - 0.90986) < 1e-4);
+  QCOMPARE (fromGroups.balanceText, QStringLiteral ("91%"));
+  QCOMPARE (fromGroups.message, QStringLiteral ("Gemini Models"));
+  QCOMPARE (fromGroups.resetAt.toUTC (),
+            QDateTime::fromString (QStringLiteral ("2026-11-19T18:55:48Z"),
+                                   Qt::ISODateWithMs).toUTC ());
+}
+
+void
+ProviderRegistryTest::antigravityParserRejectsFailureAndEmptyResponse ()
+{
+  const QuotaSnapshot authFail = QuotaParsers::parseAntigravityUsage (
+      parseJson (R"({"status": "ERROR", "error": "Please sign in to Antigravity first."})"),
+      QuotaSnapshot ());
+  QCOMPARE (authFail.status, SnapshotStatus::AuthError);
+  QVERIFY (authFail.message.contains (QStringLiteral ("agy")));
+
+  const QuotaSnapshot genericFail = QuotaParsers::parseAntigravityUsage (
+      parseJson (R"({"status": "ERROR", "error": "backend unavailable"})"),
+      QuotaSnapshot ());
+  QCOMPARE (genericFail.status, SnapshotStatus::ParseError);
+  QVERIFY (genericFail.message.contains (QStringLiteral ("backend unavailable")));
+
+  const QuotaSnapshot empty = QuotaParsers::parseAntigravityUsage (
+      parseJson (R"({"status": "SUCCESS", "response": ""})"),
+      QuotaSnapshot ());
+  QCOMPARE (empty.status, SnapshotStatus::ParseError);
+  QVERIFY (!empty.message.isEmpty ());
 }
 
 void
@@ -1562,6 +1713,8 @@ ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
   QVERIFY (qml.contains (QStringLiteral ("\"claude\": \"A\"")));
   // Grok and GLM Coding would both be "G"; Grok shows xAI's "X".
   QVERIFY (qml.contains (QStringLiteral ("\"grok\": \"X\"")));
+  // Antigravity and Claude would both be "A"; Antigravity shows "Y" (from agy).
+  QVERIFY (qml.contains (QStringLiteral ("\"antigravity\": \"Y\"")));
 }
 
 void
@@ -1895,6 +2048,95 @@ ProviderRegistryTest::systemProxyFallbackRespectsEnvAndCachesLoader ()
   const QString source = readFile (
       QStringLiteral (SOURCE_DIR "/src/direct_quota_provider.cpp"));
   QVERIFY (source.contains (QStringLiteral ("FallbackProxyFactory")));
+}
+
+void
+ProviderRegistryTest::systemProxyAppliesFallbackEnvVars ()
+{
+  SystemProxy::GSettingsProxyConfig cfg;
+  cfg.mode = QStringLiteral ("manual");
+  cfg.useSameProxy = true;
+  cfg.http.host = QStringLiteral ("127.0.0.1");
+  cfg.http.port = 7890;
+  cfg.socks.host = QStringLiteral ("127.0.0.1");
+  cfg.socks.port = 7891;
+  cfg.ignoreHosts = { QStringLiteral ("localhost"), QStringLiteral ("127.0.0.1"),
+                      QStringLiteral ("<local>") };
+
+  QProcessEnvironment emptyEnv;
+  SystemProxy::applyProxyEnvFromConfig (emptyEnv, cfg);
+  QCOMPARE (emptyEnv.value (QStringLiteral ("http_proxy")),
+            QStringLiteral ("http://127.0.0.1:7890"));
+  QCOMPARE (emptyEnv.value (QStringLiteral ("https_proxy")),
+            QStringLiteral ("http://127.0.0.1:7890"));
+  QCOMPARE (emptyEnv.value (QStringLiteral ("all_proxy")),
+            QStringLiteral ("socks5://127.0.0.1:7891"));
+  QCOMPARE (emptyEnv.value (QStringLiteral ("no_proxy")),
+            QStringLiteral ("localhost,127.0.0.1"));
+
+  // Existing proxy env vars are preserved untouched.
+  QProcessEnvironment existingEnv;
+  existingEnv.insert (QStringLiteral ("https_proxy"), QStringLiteral ("http://10.0.0.2:8080"));
+  SystemProxy::applyProxyEnvFromConfig (existingEnv, cfg);
+  QCOMPARE (existingEnv.value (QStringLiteral ("https_proxy")),
+            QStringLiteral ("http://10.0.0.2:8080"));
+  QVERIFY (!existingEnv.contains (QStringLiteral ("http_proxy")));
+}
+
+void
+ProviderRegistryTest::directProviderFetchesAntigravityViaCli ()
+{
+  const bool hadAgyBin = qEnvironmentVariableIsSet ("AGY_BIN");
+  const QByteArray savedAgyBin = qgetenv ("AGY_BIN");
+  auto restore = qScopeGuard ([&]() {
+    if (hadAgyBin)
+      {
+        qputenv ("AGY_BIN", savedAgyBin);
+      }
+    else
+      {
+        qunsetenv ("AGY_BIN");
+      }
+  });
+
+  QTemporaryDir dir;
+  const QString fakeAgy = dir.filePath (QStringLiteral ("agy"));
+  writeFile (fakeAgy, QString::fromUtf8 (R"(#!/bin/sh
+if [ "$1" = "-p" ] && [ "$2" = "/usage" ] && [ "$3" = "--output-format" ] && [ "$4" = "json" ]; then
+  printf '%s\n' '{"status":"SUCCESS","response":"Gemini Models\tWeekly Limit Remaining\t92%\t2026-11-26T00:00:00Z\nGemini Models\tFive Hour Limit Remaining\t84%\t2026-11-19T19:00:00Z\n","num_turns":0}'
+  exit 0
+fi
+echo "unexpected args: $*" >&2
+exit 2
+)"));
+  QVERIFY (QFile::setPermissions (
+      fakeAgy, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+  qputenv ("AGY_BIN", fakeAgy.toUtf8 ());
+
+  DirectQuotaProvider provider;
+  QSignalSpy completed (&provider, &DirectQuotaProvider::refreshCompleted);
+  QSignalSpy failed (&provider, &DirectQuotaProvider::refreshFailed);
+
+  QuotaRequest request;
+  request.entryId = QStringLiteral ("antigravity");
+  request.providerId = QStringLiteral ("antigravity");
+  provider.refreshEntry (request);
+
+  QVERIFY2 (completed.wait (5000),
+            qPrintable (failed.isEmpty () ? QStringLiteral ("timed out")
+                                          : failed.first ().at (1).toString ()));
+  QCOMPARE (failed.count (), 0);
+  QCOMPARE (completed.count (), 1);
+  const QuotaSnapshot snap = completed.first ().at (1).value<QuotaSnapshot> ();
+  QCOMPARE (snap.status, SnapshotStatus::Ok);
+  QCOMPARE (snap.fiveHourRemainingRatio, 0.84);
+  QCOMPARE (snap.remainingRatio, 0.92);
+  QCOMPARE (snap.providerName, QStringLiteral ("Antigravity"));
+
+  // In-flight tracking cleared on completion so a second refresh runs.
+  provider.refreshEntry (request);
+  QVERIFY (completed.wait (5000));
+  QCOMPARE (completed.count (), 2);
 }
 
 void

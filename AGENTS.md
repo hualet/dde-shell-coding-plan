@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quotas (Codex, Claude, Kimi Code, GLM Coding, MiniMax, Grok) in the deepin taskbar. Quotas are fetched **directly from the vendors' official usage APIs** using credentials read from local coding-agent CLI config files (the approach used by orca and magpie) — no browser extension is involved. Accounts come from two sources:
+DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quotas (Codex, Claude, Kimi Code, GLM Coding, MiniMax, Grok, Antigravity) in the deepin taskbar. Quotas are fetched **directly from the vendors' official usage APIs** using credentials read from local coding-agent CLI config files (the approach used by orca and magpie) — no browser extension is involved. Accounts come from two sources:
 
-- **Auto-detected**: sign-ins of the Codex / Claude Code / Kimi Code / ZCode (GLM) / Grok CLIs found on this machine, plus Claude Desktop's on-disk usage samples.
+- **Auto-detected**: sign-ins of the Codex / Claude Code / Kimi Code / ZCode (GLM) / Grok CLIs found on this machine, Claude Desktop's on-disk usage samples, and the Antigravity CLI (`agy`).
 - **Manual**: user-pasted API keys (MiniMax, GLM, Kimi Code support key-based quota queries; multiple accounts per vendor are allowed).
 
 ## Architecture
@@ -31,8 +31,9 @@ DDE Shell plugin (`org.deepin.ds.coding-plan`) that displays AI coding plan quot
 | glm-coding (manual) | user API key | same endpoint, default host `open.bigmodel.cn`, failover `api.z.ai` (same path) on network errors/timeouts only |
 | minimax (manual) | user API key | `GET https://api.minimaxi.com/v1/token_plan/remains` with Bearer (HTTP 200 + `base_resp.status_code==1004` means auth failure) |
 | grok (auto) | `~/.grok/auth.json` → map entry `key` (JWT access token, 6 h), `user_id` (read-only; expired → ask the user to rerun grok) | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with Bearer + `x-xai-token-auth: xai-grok-cli`, `x-userid`; `config.creditUsagePercent` is the weekly used %, `config.currentPeriod.end` the reset time |
+| antigravity (auto) | `agy` CLI (`$AGY_BIN`, `$PATH`, or `~/.local/bin/agy`; credentials owned by `agy`) | `agy -p /usage --output-format json` (zero-turn headless slash command); prefers structured `command.data.groups[].buckets[]` (`window`, `remaining_fraction`, `reset_time`) with TSV `response` fallback, reporting the tightest pool |
 
-Provider IDs `"codex"`, `"claude"`, `"kimi-code"`, `"glm-coding"`, `"minimax"`, `"grok"` are used identically across model, fetcher and registry.
+Provider IDs `"codex"`, `"claude"`, `"kimi-code"`, `"glm-coding"`, `"minimax"`, `"grok"`, `"antigravity"` are used identically across model, fetcher and registry.
 
 ### Internationalization
 

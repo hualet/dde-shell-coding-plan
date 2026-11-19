@@ -3,14 +3,14 @@
 [![Build](https://github.com/hualet/dde-shell-coding-plan/actions/workflows/build.yml/badge.svg)](https://github.com/hualet/dde-shell-coding-plan/actions/workflows/build.yml)
 [![Build Debian Package](https://github.com/hualet/dde-shell-coding-plan/actions/workflows/deb.yml/badge.svg)](https://github.com/hualet/dde-shell-coding-plan/actions/workflows/deb.yml)
 
-Deepin DDE Shell 的任务栏 Coding Plan 插件，使用 Qt6/C++/QML 构建，集中显示 Codex、Claude、Kimi Code、GLM Coding、MiniMax、Grok 等订阅的剩余额度，直连各厂商官方用量 API，无需浏览器插件。
+Deepin DDE Shell 的任务栏 Coding Plan 插件，使用 Qt6/C++/QML 构建，集中显示 Codex、Claude、Kimi Code、GLM Coding、MiniMax、Grok、Antigravity 等订阅的剩余额度，直连各厂商官方用量接口，无需浏览器插件。
 
 ![plugin showcase](./docs/showcases/showcase.png)
 
 ## 功能
 
 - 任务栏以圆环常驻显示各 Coding Plan 的额度状态，悬停提示、点击弹窗查看详情
-- 自动识别本机已登录的 CLI 账号：Codex CLI（`~/.codex`）、Claude Code（`~/.claude`）/ Claude 桌面版（`~/.config/Claude`）、Kimi Code CLI（`~/.kimi-code`）、ZCode/GLM（`~/.zcode`）、Grok CLI（`~/.grok`）
+- 自动识别本机已登录的 CLI 账号：Codex CLI（`~/.codex`）、Claude Code（`~/.claude`）/ Claude 桌面版（`~/.config/Claude`）、Kimi Code CLI（`~/.kimi-code`）、ZCode/GLM（`~/.zcode`）、Grok CLI（`~/.grok`）、Antigravity CLI（`agy`）
 - MiniMax、GLM、Kimi Code 支持手动添加 API Key 账号，同厂商可添加多个
 - Codex 访问令牌过期时自动刷新并写回 `~/.codex/auth.json`；其余 CLI 凭据只读，由各自 CLI 负责刷新
 - 弹窗展示各账号的状态、5 小时/周额度与控制台入口，支持删除手动账号
@@ -61,7 +61,7 @@ dpkg-buildpackage -us -uc -b
 - 后端：C++17、Qt6 Network
 - 前端：QML、Qt Quick Controls 2、DTK6
 - 运行模式：DDE Shell 插件
-- 数据源：OpenAI（Codex）、Anthropic（Claude）、Kimi、智谱（GLM Coding）、MiniMax、xAI（Grok）的官方用量 API
+- 数据源：OpenAI（Codex）、Anthropic（Claude）、Kimi、智谱（GLM Coding）、MiniMax、xAI（Grok）、Google（Antigravity `agy`）的官方用量接口
 
 项目主要目录：
 

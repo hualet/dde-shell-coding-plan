@@ -129,6 +129,18 @@
         <source>The Grok sign-in expired; run grok once to refresh the sign-in.</source>
         <translation>Grok 登录已过期，请运行一次 grok 刷新登录。</translation>
     </message>
+    <message>
+        <source>Antigravity CLI (agy) not found.</source>
+        <translation>未找到 Antigravity CLI（agy）。</translation>
+    </message>
+    <message>
+        <source>Antigravity is not signed in; run agy once to sign in.</source>
+        <translation>Antigravity 未登录，请运行一次 agy 完成登录。</translation>
+    </message>
+    <message>
+        <source>Failed to run Antigravity CLI: %1</source>
+        <translation>运行 Antigravity CLI 失败：%1</translation>
+    </message>
 </context>
 <context>
     <name>ManualAccountsWidget</name>
@@ -233,6 +245,18 @@
     <message>
         <source>No quota data in the Grok response.</source>
         <translation>Grok 响应中没有额度数据。</translation>
+    </message>
+    <message>
+        <source>Antigravity is not signed in; run agy once to sign in.</source>
+        <translation>Antigravity 未登录，请运行一次 agy 完成登录。</translation>
+    </message>
+    <message>
+        <source>Antigravity CLI reported failure.</source>
+        <translation>Antigravity CLI 返回失败。</translation>
+    </message>
+    <message>
+        <source>No quota data in the Antigravity response.</source>
+        <translation>Antigravity 响应中没有额度数据。</translation>
     </message>
 </context>
 <context>

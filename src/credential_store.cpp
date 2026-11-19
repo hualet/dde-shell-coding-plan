@@ -6,8 +6,10 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <QUrl>
 
 namespace
@@ -91,6 +93,43 @@ CredentialStore::grokAuthPath ()
       return QDir (grokHome).filePath (QStringLiteral ("auth.json"));
     }
   return QDir::home ().filePath (QStringLiteral (".grok/auth.json"));
+}
+
+QString
+CredentialStore::antigravityCliPath ()
+{
+  const auto isRunnable = [](const QString &path) {
+    const QFileInfo info (path);
+    return info.isFile () && info.isExecutable ();
+  };
+
+  if (qEnvironmentVariableIsSet ("AGY_BIN"))
+    {
+      const QString override = qEnvironmentVariable ("AGY_BIN").trimmed ();
+      return isRunnable (override) ? override : QString ();
+    }
+
+  const QString onPath = QStandardPaths::findExecutable (QStringLiteral ("agy"));
+  if (!onPath.isEmpty ())
+    {
+      return onPath;
+    }
+
+  // Official install script places agy in ~/.local/bin, which dde-shell's
+  // session PATH may omit.
+  const QStringList candidates = {
+    QDir::home ().filePath (QStringLiteral (".local/bin/agy")),
+    QStringLiteral ("/usr/local/bin/agy"),
+    QStringLiteral ("/usr/bin/agy"),
+  };
+  for (const QString &candidate : candidates)
+    {
+      if (isRunnable (candidate))
+        {
+          return candidate;
+        }
+    }
+  return QString ();
 }
 
 QString

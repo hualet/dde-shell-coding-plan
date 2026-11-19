@@ -80,6 +80,7 @@ private:
   void fetchGlm (const QuotaRequest &request, const QString &key,
                  const QString &rootUrl, const QString &failoverRoot);
   void fetchMinimax (const QuotaRequest &request);
+  void fetchAntigravity (const QuotaRequest &request);
 
   ProviderRegistry m_registry;
   QNetworkAccessManager m_nam;

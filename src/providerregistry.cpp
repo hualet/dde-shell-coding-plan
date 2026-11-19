@@ -104,6 +104,13 @@ ProviderRegistry::createDefault ()
         QStringLiteral ("https://grok.com/supergrok") });
 
   registry.addProvider (
+      { QStringLiteral ("antigravity"),
+        QStringLiteral ("Antigravity"),
+        SourceType::OfficialApi,
+        QStringLiteral ("https://antigravity.google/"),
+        QStringLiteral ("https://antigravity.google/") });
+
+  registry.addProvider (
       { QStringLiteral ("glm-coding"),
         QStringLiteral ("GLM Coding"),
         SourceType::OfficialApi,

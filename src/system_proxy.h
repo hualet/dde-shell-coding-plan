@@ -8,6 +8,7 @@
 #include <QNetworkProxy>
 #include <QNetworkProxyFactory>
 #include <QNetworkProxyQuery>
+#include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
 
@@ -55,6 +56,16 @@ QList<QNetworkProxy> resolveFromConfig (const QNetworkProxyQuery &query,
 // Reads the desktop's GSettings proxy configuration (tries
 // org.gnome.system.proxy, then com.deepin.wrap.gnome.system.proxy).
 GSettingsProxyConfig readGSettingsProxy ();
+
+// Populates http_proxy/https_proxy/all_proxy/no_proxy on a child process
+// environment from a parsed GSettingsProxyConfig, only when no proxy env var
+// is already set.
+void applyProxyEnvFromConfig (QProcessEnvironment &env,
+                              const GSettingsProxyConfig &config);
+
+// Reads GSettings (when no proxy env var is already set) and applies it to env
+// so helper CLIs spawned from dde-shell honor the desktop system proxy.
+void applyFallbackProxyEnv (QProcessEnvironment &env);
 
 // Proxy factory for QNetworkAccessManager: delegates to Qt's system proxy
 // first; when no proxy env var is set and Qt/libproxy returns only NoProxy

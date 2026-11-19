@@ -166,6 +166,39 @@ makeSocksProxy (const ProxyEndpoint &endpoint)
 {
   return QNetworkProxy (QNetworkProxy::Socks5Proxy, endpoint.host, endpoint.port);
 }
+
+bool
+envHasProxyVars (const QProcessEnvironment &env)
+{
+  static const QStringList kVars = {
+    QStringLiteral ("http_proxy"), QStringLiteral ("https_proxy"),
+    QStringLiteral ("all_proxy"), QStringLiteral ("HTTP_PROXY"),
+    QStringLiteral ("HTTPS_PROXY"), QStringLiteral ("ALL_PROXY"),
+  };
+  for (const QString &name : kVars)
+    {
+      if (!env.value (name).trimmed ().isEmpty ())
+        {
+          return true;
+        }
+    }
+  return false;
+}
+
+QString
+formatProxyUrl (const QString &scheme, const ProxyEndpoint &endpoint)
+{
+  QUrl url;
+  url.setScheme (scheme);
+  url.setHost (stripBrackets (endpoint.host));
+  url.setPort (endpoint.port);
+  if (endpoint.useAuth && !endpoint.user.isEmpty ())
+    {
+      url.setUserName (endpoint.user);
+      url.setPassword (endpoint.password);
+    }
+  return url.toString (QUrl::FullyEncoded);
+}
 } // namespace
 
 GSettingsProxyConfig
@@ -427,6 +460,72 @@ readGSettingsProxy ()
         }
     }
   return {};
+}
+
+void
+applyProxyEnvFromConfig (QProcessEnvironment &env,
+                         const GSettingsProxyConfig &config)
+{
+  if (envHasProxyVars (env) || config.mode != QStringLiteral ("manual"))
+    {
+      return;
+    }
+
+  bool applied = false;
+  if (config.http.isValid ())
+    {
+      const QString url = formatProxyUrl (QStringLiteral ("http"), config.http);
+      env.insert (QStringLiteral ("http_proxy"), url);
+      env.insert (QStringLiteral ("HTTP_PROXY"), url);
+      applied = true;
+    }
+
+  const ProxyEndpoint &httpsEndpoint
+      = (config.useSameProxy && config.http.isValid ()) ? config.http : config.https;
+  if (httpsEndpoint.isValid ())
+    {
+      const QString url = formatProxyUrl (QStringLiteral ("http"), httpsEndpoint);
+      env.insert (QStringLiteral ("https_proxy"), url);
+      env.insert (QStringLiteral ("HTTPS_PROXY"), url);
+      applied = true;
+    }
+
+  if (config.socks.isValid ())
+    {
+      const QString url = formatProxyUrl (QStringLiteral ("socks5"), config.socks);
+      env.insert (QStringLiteral ("all_proxy"), url);
+      env.insert (QStringLiteral ("ALL_PROXY"), url);
+      applied = true;
+    }
+
+  if (applied && env.value (QStringLiteral ("no_proxy")).trimmed ().isEmpty ()
+      && env.value (QStringLiteral ("NO_PROXY")).trimmed ().isEmpty ())
+    {
+      QStringList noProxy;
+      for (const QString &host : config.ignoreHosts)
+        {
+          if (host.compare (QStringLiteral ("<local>"), Qt::CaseInsensitive) != 0)
+            {
+              noProxy.append (host);
+            }
+        }
+      if (!noProxy.isEmpty ())
+        {
+          const QString joined = noProxy.join (QLatin1Char (','));
+          env.insert (QStringLiteral ("no_proxy"), joined);
+          env.insert (QStringLiteral ("NO_PROXY"), joined);
+        }
+    }
+}
+
+void
+applyFallbackProxyEnv (QProcessEnvironment &env)
+{
+  if (envHasProxyVars (env))
+    {
+      return;
+    }
+  applyProxyEnvFromConfig (env, readGSettingsProxy ());
 }
 
 FallbackProxyFactory::FallbackProxyFactory (ConfigLoader loader)

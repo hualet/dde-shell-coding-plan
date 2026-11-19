@@ -14,8 +14,12 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QTimer>
+
+#include <memory>
 
 namespace
 {
@@ -83,7 +87,7 @@ DirectQuotaProvider::detectableProviderIds ()
 {
   return { QStringLiteral ("codex"), QStringLiteral ("claude"),
            QStringLiteral ("kimi-code"), QStringLiteral ("glm-coding"),
-           QStringLiteral ("grok") };
+           QStringLiteral ("grok"), QStringLiteral ("antigravity") };
 }
 
 bool
@@ -116,6 +120,10 @@ DirectQuotaProvider::credentialsPresent (const QString &providerId)
     {
       return CredentialStore::readGrokCredentials (
                  CredentialStore::grokAuthPath ()).present;
+    }
+  if (providerId == QStringLiteral ("antigravity"))
+    {
+      return !CredentialStore::antigravityCliPath ().isEmpty ();
     }
   return false;
 }
@@ -222,6 +230,10 @@ DirectQuotaProvider::refreshEntry (const QuotaRequest &request)
   else if (request.providerId == QStringLiteral ("minimax"))
     {
       fetchMinimax (request);
+    }
+  else if (request.providerId == QStringLiteral ("antigravity"))
+    {
+      fetchAntigravity (request);
     }
   else
     {
@@ -690,4 +702,129 @@ DirectQuotaProvider::fetchMinimax (const QuotaRequest &request)
            [this](const QuotaRequest &req, int, const QJsonObject &json) {
              finish (req, QuotaParsers::parseMinimaxRemains (json, snapshotTemplate (req)));
            });
+}
+
+void
+DirectQuotaProvider::fetchAntigravity (const QuotaRequest &request)
+{
+  const QString agyPath = CredentialStore::antigravityCliPath ();
+  if (agyPath.isEmpty ())
+    {
+      emit refreshFailed (request.entryId,
+                          tr ("Antigravity CLI (agy) not found."),
+                          SnapshotStatus::AuthError);
+      return;
+    }
+
+  auto *process = new QProcess (this);
+  QProcessEnvironment env = QProcessEnvironment::systemEnvironment ();
+  SystemProxy::applyFallbackProxyEnv (env);
+  process->setProcessEnvironment (env);
+
+  auto settled = std::make_shared<bool> (false);
+  auto *timeoutTimer = new QTimer (process);
+  timeoutTimer->setSingleShot (true);
+  const QString providerName = snapshotTemplate (request).providerName;
+
+  connect (timeoutTimer, &QTimer::timeout, this,
+           [this, request, process, settled, providerName]() {
+             if (*settled)
+               {
+                 return;
+               }
+             *settled = true;
+             process->kill ();
+             process->deleteLater ();
+             emit refreshFailed (request.entryId,
+                                 tr ("%1 request timed out.").arg (providerName),
+                                 SnapshotStatus::NetworkError);
+           });
+
+  connect (process, &QProcess::errorOccurred, this,
+           [this, request, process, timeoutTimer, settled](QProcess::ProcessError error) {
+             if (*settled || error != QProcess::FailedToStart)
+               {
+                 return;
+               }
+             *settled = true;
+             timeoutTimer->stop ();
+             process->deleteLater ();
+             emit refreshFailed (
+                 request.entryId,
+                 tr ("Failed to run Antigravity CLI: %1").arg (process->errorString ()),
+                 SnapshotStatus::NetworkError);
+           });
+
+  connect (process,
+           QOverload<int, QProcess::ExitStatus>::of (&QProcess::finished), this,
+           [this, request, process, timeoutTimer, settled, providerName](
+               int exitCode, QProcess::ExitStatus exitStatus) {
+             timeoutTimer->stop ();
+             process->deleteLater ();
+             if (*settled)
+               {
+                 return;
+               }
+             *settled = true;
+
+             const QByteArray stdoutData = process->readAllStandardOutput ();
+             const QByteArray stderrData = process->readAllStandardError ();
+
+             QJsonParseError parseError;
+             const QJsonDocument document = QJsonDocument::fromJson (
+                 stdoutData, &parseError);
+             if (parseError.error == QJsonParseError::NoError
+                 && document.isObject ())
+               {
+                 finish (request,
+                         QuotaParsers::parseAntigravityUsage (
+                             document.object (), snapshotTemplate (request)));
+                 return;
+               }
+
+             const QString combined = (QString::fromUtf8 (stderrData)
+                                       + QLatin1Char ('\n')
+                                       + QString::fromUtf8 (stdoutData))
+                                          .trimmed ();
+             const QString lower = combined.toLower ();
+             if (lower.contains (QStringLiteral ("sign in"))
+                 || lower.contains (QStringLiteral ("signed in"))
+                 || lower.contains (QStringLiteral ("login"))
+                 || lower.contains (QStringLiteral ("log in"))
+                 || lower.contains (QStringLiteral ("unauthenticated"))
+                 || lower.contains (QStringLiteral ("unauthorized"))
+                 || lower.contains (QStringLiteral ("credential")))
+               {
+                 emit refreshFailed (
+                     request.entryId,
+                     tr ("Antigravity is not signed in; run agy once to sign in."),
+                     SnapshotStatus::AuthError);
+                 return;
+               }
+
+             if (exitStatus != QProcess::NormalExit || exitCode != 0)
+               {
+                 const QString firstLine = combined.section (QLatin1Char ('\n'), 0, 0).trimmed ();
+                 emit refreshFailed (
+                     request.entryId,
+                     firstLine.isEmpty ()
+                         ? tr ("Failed to run Antigravity CLI: %1")
+                               .arg (QString::number (exitCode))
+                         : tr ("Failed to run Antigravity CLI: %1").arg (firstLine),
+                     SnapshotStatus::NetworkError);
+                 return;
+               }
+
+             emit refreshFailed (
+                 request.entryId,
+                 tr ("%1 response is not valid JSON.").arg (providerName),
+                 SnapshotStatus::ParseError);
+           });
+
+  // Zero-turn headless slash command: reads quota without consuming tokens.
+  timeoutTimer->start (kRequestTimeoutMs);
+  process->start (agyPath,
+                  { QStringLiteral ("-p"), QStringLiteral ("/usage"),
+                    QStringLiteral ("--output-format"), QStringLiteral ("json") });
+  process->closeWriteChannel ();
 }

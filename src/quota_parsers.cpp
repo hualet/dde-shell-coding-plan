@@ -469,6 +469,215 @@ QuotaParsers::parseGrokBilling (const QJsonObject &root,
 }
 
 QuotaSnapshot
+QuotaParsers::parseAntigravityUsage (const QJsonObject &root,
+                                     const QuotaSnapshot &snapshot)
+{
+  QuotaSnapshot result = snapshot;
+
+  const auto looksLikeAuthError = [](const QString &text) {
+    const QString lower = text.toLower ();
+    return lower.contains (QStringLiteral ("sign in"))
+        || lower.contains (QStringLiteral ("signed in"))
+        || lower.contains (QStringLiteral ("login"))
+        || lower.contains (QStringLiteral ("log in"))
+        || lower.contains (QStringLiteral ("unauthenticated"))
+        || lower.contains (QStringLiteral ("unauthorized"))
+        || lower.contains (QStringLiteral ("credential"))
+        || lower.contains (QStringLiteral ("not authenticated"));
+  };
+
+  const QString status = root.value (QStringLiteral ("status")).toString ().trimmed ();
+  const QString response = root.value (QStringLiteral ("response")).toString ();
+  if (!status.isEmpty ()
+      && status.compare (QStringLiteral ("SUCCESS"), Qt::CaseInsensitive) != 0)
+    {
+      QString detail = root.value (QStringLiteral ("error")).toString ().trimmed ();
+      if (detail.isEmpty ())
+        {
+          detail = root.value (QStringLiteral ("message")).toString ().trimmed ();
+        }
+      if (detail.isEmpty ())
+        {
+          detail = response.trimmed ();
+        }
+      if (looksLikeAuthError (detail))
+        {
+          result.status = SnapshotStatus::AuthError;
+          result.message = ParserTr::tr ("Antigravity is not signed in; run agy once to sign in.");
+          return result;
+        }
+      result.status = SnapshotStatus::ParseError;
+      result.message = detail.isEmpty ()
+          ? ParserTr::tr ("Antigravity CLI reported failure.")
+          : detail;
+      return result;
+    }
+
+  // `agy -p /usage --output-format json` returns structured quota buckets under
+  // `command.data.groups[].buckets[]` (window: "5h" | "weekly",
+  // remaining_fraction: 0..1, reset_time: ISO-8601) and a tab-separated table
+  // in `response`. Prefer the structured groups and fall back to TSV parsing.
+  // Several model pools can coexist (e.g. Gemini Models, Claude and GPT
+  // models, Gemini 4 Argon); surface the tightest (lowest remaining / highest
+  // used) pool for each window so warnings trigger as soon as any pool runs low.
+  Window fiveHour;
+  Window weekly;
+  QString bottleneckGroup;
+  double highestUsed = -1.0;
+
+  const auto recordCandidate = [&](const QString &group, bool isFiveHour,
+                                   bool isWeekly, const Window &candidate) {
+    if (isFiveHour && (!fiveHour.valid || candidate.usedPercent > fiveHour.usedPercent))
+      {
+        fiveHour = candidate;
+      }
+    if (isWeekly && (!weekly.valid || candidate.usedPercent > weekly.usedPercent))
+      {
+        weekly = candidate;
+      }
+    if (!group.isEmpty () && candidate.usedPercent > highestUsed)
+      {
+        highestUsed = candidate.usedPercent;
+        bottleneckGroup = group;
+      }
+  };
+
+  const auto parseIsoTime = [](const QString &value) {
+    if (value.isEmpty ())
+      {
+        return QDateTime ();
+      }
+    QDateTime parsed = QDateTime::fromString (value, Qt::ISODateWithMs);
+    if (!parsed.isValid ())
+      {
+        parsed = QDateTime::fromString (value, Qt::ISODate);
+      }
+    return parsed;
+  };
+
+  const QJsonArray groups = root.value (QStringLiteral ("command")).toObject ()
+                                .value (QStringLiteral ("data")).toObject ()
+                                .value (QStringLiteral ("groups")).toArray ();
+  for (const QJsonValue &groupVal : groups)
+    {
+      const QJsonObject groupObj = groupVal.toObject ();
+      const QString groupName = groupObj.value (QStringLiteral ("name")).toString ().trimmed ();
+      const QJsonArray buckets = groupObj.value (QStringLiteral ("buckets")).toArray ();
+      for (const QJsonValue &bucketVal : buckets)
+        {
+          const QJsonObject bucket = bucketVal.toObject ();
+          const QString windowTag = bucket.value (QStringLiteral ("window")).toString ().trimmed ().toLower ();
+          const QString bucketName = bucket.value (QStringLiteral ("name")).toString ().trimmed ().toLower ();
+          const bool isFiveHour = windowTag == QStringLiteral ("5h")
+              || windowTag.contains (QStringLiteral ("five"))
+              || bucketName.contains (QStringLiteral ("five hour"))
+              || bucketName.contains (QStringLiteral ("5-hour"));
+          const bool isWeekly = windowTag == QStringLiteral ("weekly")
+              || windowTag == QStringLiteral ("7d")
+              || bucketName.contains (QStringLiteral ("week"));
+          if (!isFiveHour && !isWeekly)
+            {
+              continue;
+            }
+
+          const double fraction = numberOrNaN (
+              bucket.value (QStringLiteral ("remaining_fraction")));
+          if (std::isnan (fraction))
+            {
+              continue;
+            }
+
+          Window candidate;
+          candidate.usedPercent = clampPercent ((1.0 - fraction) * 100.0);
+          candidate.resetAt = parseIsoTime (
+              bucket.value (QStringLiteral ("reset_time")).toString ().trimmed ());
+          candidate.valid = true;
+          recordCandidate (groupName, isFiveHour, isWeekly, candidate);
+        }
+    }
+
+  if (!fiveHour.valid && !weekly.valid)
+    {
+      const QStringList lines = response.split (QLatin1Char ('\n'), Qt::SkipEmptyParts);
+      for (const QString &rawLine : lines)
+        {
+          const QString line = rawLine.trimmed ();
+          if (line.isEmpty ())
+            {
+              continue;
+            }
+          const QStringList cols = line.split (QLatin1Char ('\t'), Qt::SkipEmptyParts);
+          if (cols.size () < 3)
+            {
+              continue;
+            }
+
+          const QString group = cols.at (0).trimmed ();
+          const QString label = cols.at (1).trimmed ();
+          const QString lowerLabel = label.toLower ();
+          const bool isFiveHour = lowerLabel.contains (QStringLiteral ("five hour"))
+              || lowerLabel.contains (QStringLiteral ("5 hour"))
+              || lowerLabel.contains (QStringLiteral ("5-hour"))
+              || lowerLabel.contains (QStringLiteral ("5h"))
+              || lowerLabel.contains (QStringLiteral ("session"));
+          const bool isWeekly = lowerLabel.contains (QStringLiteral ("week"))
+              || lowerLabel.contains (QStringLiteral ("7 day"))
+              || lowerLabel.contains (QStringLiteral ("7-day"))
+              || lowerLabel.contains (QStringLiteral ("7d"));
+          if (!isFiveHour && !isWeekly)
+            {
+              continue;
+            }
+
+          QString percentStr = cols.at (2).trimmed ();
+          if (percentStr.endsWith (QLatin1Char ('%')))
+            {
+              percentStr.chop (1);
+            }
+          bool ok = false;
+          const double pct = percentStr.trimmed ().toDouble (&ok);
+          if (!ok || std::isnan (pct))
+            {
+              continue;
+            }
+
+          const bool isUsedMetric = lowerLabel.contains (QStringLiteral ("used"))
+              && !lowerLabel.contains (QStringLiteral ("remaining"));
+          const double usedPercent = clampPercent (isUsedMetric ? pct : (100.0 - pct));
+
+          Window candidate;
+          candidate.usedPercent = usedPercent;
+          if (cols.size () >= 4)
+            {
+              candidate.resetAt = parseIsoTime (cols.at (3).trimmed ());
+            }
+          candidate.valid = true;
+          recordCandidate (group, isFiveHour, isWeekly, candidate);
+        }
+    }
+
+  if (!fiveHour.valid && !weekly.valid)
+    {
+      if (looksLikeAuthError (response))
+        {
+          result.status = SnapshotStatus::AuthError;
+          result.message = ParserTr::tr ("Antigravity is not signed in; run agy once to sign in.");
+          return result;
+        }
+      result.status = SnapshotStatus::ParseError;
+      result.message = ParserTr::tr ("No quota data in the Antigravity response.");
+      return result;
+    }
+
+  applyWindow (result, fiveHour, true);
+  applyWindow (result, weekly, false);
+  result.message = bottleneckGroup;
+  result.status = SnapshotStatus::Ok;
+  result.updatedAt = QDateTime::currentDateTimeUtc ();
+  return result;
+}
+
+QuotaSnapshot
 QuotaParsers::parseGlmQuotaLimit (const QJsonObject &root,
                                   const QuotaSnapshot &snapshot)
 {

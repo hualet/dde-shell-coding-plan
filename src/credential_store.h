@@ -61,6 +61,7 @@ QString claudeDesktopUsagePath ();
 QString zcodeConfigPath ();
 QString zcodeSettingPath ();
 QString grokAuthPath ();
+QString antigravityCliPath ();
 
 CodexCredentials readCodexCredentials (const QString &path);
 KimiCredentials readKimiCredentials (const QString &path);

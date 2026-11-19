@@ -38,6 +38,8 @@ QuotaSnapshot parseKimiUsages (const QJsonObject &root,
                                const QuotaSnapshot &snapshot);
 QuotaSnapshot parseGrokBilling (const QJsonObject &root,
                                 const QuotaSnapshot &snapshot);
+QuotaSnapshot parseAntigravityUsage (const QJsonObject &root,
+                                     const QuotaSnapshot &snapshot);
 QuotaSnapshot parseGlmQuotaLimit (const QJsonObject &root,
                                   const QuotaSnapshot &snapshot);
 QuotaSnapshot parseMinimaxRemains (const QJsonObject &root,
