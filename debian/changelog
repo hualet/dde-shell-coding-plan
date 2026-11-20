@@ -1,3 +1,11 @@
+dde-shell-coding-plan (1.1.0-1) unstable; urgency=medium
+
+  * Add Grok coding plan support (auto-detected from ~/.grok/auth.json).
+  * Add Antigravity coding plan support via the official agy CLI.
+  * Fall back to GSettings system proxy on DDE when dde-shell lacks proxy env vars.
+
+ -- HualetWang <mr.asianwang@gmail.com>  Fri, 20 Nov 2026 09:28:04 +0800
+
 dde-shell-coding-plan (1.0.3-1) unstable; urgency=medium
 
   * Add a NoDisplay desktop file so the store icon check resolves.
