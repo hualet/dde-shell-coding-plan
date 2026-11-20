@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -108,6 +109,7 @@ private slots:
   void panelQmlHasNoExtensionPairingUi ();
   void panelQmlPopupStatusTextStaysLean ();
   void panelQmlDockWidgetUsesOneFiveHourRingPerProvider ();
+  void panelQmlUsesCircularProviderIcons ();
   void cmakeUsesQtNetworkWithoutWebSockets ();
   void directProviderUsesOfficialEndpoints ();
   void directProviderSendsCodexCliIdentity ();
@@ -1715,6 +1717,40 @@ ProviderRegistryTest::panelQmlDockWidgetUsesOneFiveHourRingPerProvider ()
   QVERIFY (qml.contains (QStringLiteral ("\"grok\": \"X\"")));
   // Antigravity and Claude would both be "A"; Antigravity shows "Y" (from agy).
   QVERIFY (qml.contains (QStringLiteral ("\"antigravity\": \"Y\"")));
+}
+
+void
+ProviderRegistryTest::panelQmlUsesCircularProviderIcons ()
+{
+  const QString qml = readFile (QStringLiteral (SOURCE_DIR "/package/main.qml"));
+  QVERIFY (qml.contains (QStringLiteral ("providerIconUrl")));
+  QVERIFY (qml.contains (QStringLiteral ("Qt.resolvedUrl(root.providerIcons[snapshot.providerId])")));
+  QVERIFY (qml.contains (QStringLiteral ("id: providerIcon")));
+
+  // Every built-in provider ships a circular transparent-corner PNG icon that
+  // QML maps via providerIcons and falls back to providerInitial on failure.
+  const ProviderRegistry registry = ProviderRegistry::createDefault ();
+  for (const QString &id : registry.providerIds ())
+    {
+      const QString relPath = QStringLiteral ("icons/%1.png").arg (id);
+      QVERIFY2 (qml.contains (relPath), qPrintable (relPath));
+
+      const QString fullPath = QStringLiteral (SOURCE_DIR "/package/") + relPath;
+      QVERIFY2 (QFile::exists (fullPath), qPrintable (fullPath));
+
+      const QImage img (fullPath);
+      QVERIFY2 (!img.isNull (), qPrintable (fullPath));
+      QCOMPARE (img.width (), img.height ());
+      QVERIFY (img.width () >= 64);
+      QVERIFY (img.hasAlphaChannel ());
+      // Corners sit outside the circular badge and must stay transparent.
+      QCOMPARE (qAlpha (img.pixel (0, 0)), 0);
+      QCOMPARE (qAlpha (img.pixel (img.width () - 1, 0)), 0);
+      QCOMPARE (qAlpha (img.pixel (0, img.height () - 1)), 0);
+      QCOMPARE (qAlpha (img.pixel (img.width () - 1, img.height () - 1)), 0);
+      // Center of the circular badge must be opaque.
+      QCOMPARE (qAlpha (img.pixel (img.width () / 2, img.height () / 2)), 255);
+    }
 }
 
 void

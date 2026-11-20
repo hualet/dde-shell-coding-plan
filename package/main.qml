@@ -35,7 +35,7 @@ AppletItem {
     property bool refreshHold: false
     readonly property bool refreshBusy: refreshHold || (Applet.quota ? Applet.quota.refreshing : false)
 
-    readonly property real ringSize: dockSize * 3 / 5
+    readonly property real ringSize: dockSize * 2 / 3
     readonly property real ringsExtent: visibleRingCount * ringSize + (visibleRingCount - 1) * 4 + 16
 
     implicitWidth: useColumnLayout ? dockSize : Math.max(dockSize, ringsExtent)
@@ -63,9 +63,27 @@ AppletItem {
         return "#aeb6c2"
     }
 
-    // Ring letters that would collide by name: Claude ("C" like Codex) shows
-    // its maker's initial; Grok ("G" like GLM Coding) shows xAI's; Antigravity
-    // ("A" like Claude) shows "Y" (from agy).
+    // Circular brand icons processed from LobeHub Icons (package/icons/<id>.png).
+    readonly property var providerIcons: ({
+        "codex": "icons/codex.png",
+        "claude": "icons/claude.png",
+        "kimi-code": "icons/kimi-code.png",
+        "grok": "icons/grok.png",
+        "antigravity": "icons/antigravity.png",
+        "glm-coding": "icons/glm-coding.png",
+        "minimax": "icons/minimax.png"
+    })
+
+    function providerIconUrl(snapshot) {
+        if (snapshot && root.providerIcons[snapshot.providerId])
+            return Qt.resolvedUrl(root.providerIcons[snapshot.providerId])
+        return ""
+    }
+
+    // Fallback ring letters when a provider has no icon asset. Letters that
+    // would collide by name: Claude ("C" like Codex) shows its maker's initial;
+    // Grok ("G" like GLM Coding) shows xAI's; Antigravity ("A" like Claude)
+    // shows "Y" (from agy).
     readonly property var providerInitials: ({ "claude": "A", "grok": "X", "antigravity": "Y" })
 
     function providerInitial(snapshot) {
@@ -246,13 +264,18 @@ AppletItem {
                 ? (parent.height - root.ringsExtent) / 2 + index * (root.ringSize + 4)
                 : (parent.height - height) / 2
             readonly property var snapshot: root.taskbarSnapshots[index]
+            readonly property real ringWidth: Math.max(2.2, Math.min(3.2, width * 0.095))
+            readonly property real ringGap: 1
+            readonly property real iconSize: Math.max(10, width - 2 * (ringWidth * 2 + ringGap + 0.5))
 
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.clearRect(0, 0, width, height)
+                if (!snapshot)
+                    return
                 const center = width / 2
-                const ringWidth = 4
-                const ringGap = 1
+                const ringWidth = ring.ringWidth
+                const ringGap = ring.ringGap
                 const outerRadius = center - ringWidth / 2
                 const innerRadius = center - ringWidth - ringGap - ringWidth / 2
                 const isError = snapshot.severity === "error"
@@ -329,8 +352,21 @@ AppletItem {
                 }
             }
 
+            Image {
+                id: providerIcon
+                anchors.centerIn: parent
+                width: ring.iconSize
+                height: ring.iconSize
+                source: root.providerIconUrl(parent.snapshot)
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                visible: status === Image.Ready
+            }
+
             Text {
                 anchors.centerIn: parent
+                visible: providerIcon.status !== Image.Ready
                 text: root.providerInitial(parent.snapshot)
                 font.pixelSize: Math.max(9, parent.width * 0.35)
                 font.bold: true
