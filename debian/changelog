@@ -1,3 +1,9 @@
+dde-shell-coding-plan (1.1.1-1) unstable; urgency=medium
+
+  * Replace provider initials inside taskbar quota rings with circular brand icons.
+
+ -- HualetWang <mr.asianwang@gmail.com>  Fri, 20 Nov 2026 17:03:48 +0800
+
 dde-shell-coding-plan (1.1.0-1) unstable; urgency=medium
 
   * Add Grok coding plan support (auto-detected from ~/.grok/auth.json).
